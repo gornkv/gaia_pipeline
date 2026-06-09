@@ -4,6 +4,7 @@ set -aue
 pkill -f '[u]vicorn svc_scaffold.main:app' 2>/dev/null && sleep 2
 
 "${VENV_PYTHON}" -m uvicorn svc_scaffold.main:app --host "0.0.0.0" --port "19080" & pid=$!
+echo "${pid}" >> "${PID_FILE}"
 
 check_service() {
   "${VENV_PYTHON}" - <<'PY'

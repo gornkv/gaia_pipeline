@@ -15,6 +15,7 @@ pkill -f '[l]lama_cpp.server' 2>/dev/null && sleep 2
   --n_ctx "4096" \
   --n_threads "4" \
   --chat_format chatml & pid=$!
+echo "${pid}" >> "${PID_FILE}"
 
 check_service() {
   "${VENV_PYTHON}" - <<'PY'

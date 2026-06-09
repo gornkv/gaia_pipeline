@@ -39,6 +39,7 @@ VLLM_USE_TRITON_AWQ=1
   --tool-call-parser qwen3_coder \
   --trust-remote-code \
   --enforce-eager & pid=$!
+echo "${pid}" >> "${PID_FILE}"
 
 check_service() {
   "${VENV_PYTHON}" - <<'PY'

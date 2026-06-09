@@ -17,6 +17,7 @@ HF_HOME="${REPO_ROOT}/_state/huggingface"
 INSPECT_LOG_DIR="${REPO_ROOT}/inspect-logs"
 PLAYWRIGHT_BROWSERS_PATH="${REPO_ROOT}/_state/playwright-browsers"
 PATH="${REPO_ROOT}/_state/.venv/bin:${PATH}"
+PID_FILE="${REPO_ROOT}/_state/runner/pids"
 
 mkdir -p \
   "${HF_HOME}" \
@@ -24,6 +25,18 @@ mkdir -p \
   "${PLAYWRIGHT_BROWSERS_PATH}" \
   "${REPO_ROOT}/_state/runner"
 rm -rf "${REPO_ROOT}/_state/runner"/*
+: > "${PID_FILE}"
+
+cleanup() {
+  [ -f "${PID_FILE}" ] || return
+  while IFS= read -r pid; do
+    [ -n "${pid}" ] || continue
+    kill "${pid}" 2>/dev/null || :
+  done < "${PID_FILE}"
+  exit
+}
+
+trap cleanup EXIT INT TERM
 
 create_venv() {
   if "${VENV_PYTHON}" -m pip --version >/dev/null 2>&1; then
@@ -51,45 +64,16 @@ install_environment() {
 
 publish_inspect_logs() {
   [ -n "${LOGS_BRANCH:-}" ] || return
-  git check-ref-format --branch "${LOGS_BRANCH}" >/dev/null
-
-  base_ref="HEAD"
-  if git show-ref --verify --quiet "refs/remotes/origin/${LOGS_BRANCH}"; then
-    base_ref="origin/${LOGS_BRANCH}"
-  elif git show-ref --verify --quiet "refs/heads/${LOGS_BRANCH}"; then
-    base_ref="${LOGS_BRANCH}"
-  fi
-
-  logs_index="${REPO_ROOT}/_state/logs-index"
-  rm -f "${logs_index}"
-
-  GIT_INDEX_FILE="${logs_index}" git read-tree "${base_ref}"
-  GIT_INDEX_FILE="${logs_index}" git add -f inspect-logs
-
-  if GIT_INDEX_FILE="${logs_index}" git diff --cached --quiet -- inspect-logs; then
-    echo "No inspect log changes to publish."
-    rm -f "${logs_index}"
-    return
-  fi
-
-  logs_tree="$(GIT_INDEX_FILE="${logs_index}" git write-tree)"
-  logs_parent="$(git rev-parse "${base_ref}^{commit}")"
-  logs_commit="$(git commit-tree "${logs_tree}" -p "${logs_parent}" -m "update inspect logs")"
-  origin_url="$(git config --get remote.origin.url)"
-  repo_path="${origin_url#git@github.com:}"
-  repo_path="${repo_path#https://github.com/}"
-  repo_path="${repo_path%.git}"
-  push_url="https://github.com/${repo_path}.git"
-
-  git update-ref "refs/heads/${LOGS_BRANCH}" "${logs_commit}"
-
+  git fetch origin
+  git switch -C "${LOGS_BRANCH}" "origin/${LOGS_BRANCH}" 2>/dev/null ||
+    git switch -C "${LOGS_BRANCH}"
+  git add inspect-logs
+  git commit -m "update inspect logs"
   git -c credential.helper= \
     -c 'credential.helper=!f() {
-        echo username=x-access-token
-        echo password="$GITHUB_TOKEN"
-    }; f' \
-    push "${push_url}" "refs/heads/${LOGS_BRANCH}:refs/heads/${LOGS_BRANCH}"
-  rm -f "${logs_index}"
+      echo username=x-access-token
+      echo password="$GITHUB_TOKEN"
+    }; f' push origin "${LOGS_BRANCH}"
 }
 
 if ! "${VENV_PYTHON}" "${REPO_ROOT}/runner/check_environment.py" >/dev/null 2>&1; then
