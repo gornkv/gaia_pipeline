@@ -1,6 +1,8 @@
 #!/bin/sh
 set -aue
 
+pkill -f '[v]llm' 2>/dev/null && sleep 2
+
 if [ ! -x "${REPO_ROOT}/_state/llama.cpp-cuda/cuda-12.8/llama-server" ]; then
   mkdir -p "${REPO_ROOT}/_state/downloads" "${REPO_ROOT}/_state/llama.cpp-cuda"
   curl -fL "https://github.com/ai-dock/llama.cpp-cuda/releases/download/b9568/llama.cpp-b9568-cuda-12.8-amd64.tar.gz" \
@@ -25,11 +27,9 @@ LD_LIBRARY_PATH="${REPO_ROOT}/_state/llama.cpp-cuda/cuda-12.8${LD_LIBRARY_PATH:+
   --batch-size "512" \
   --ubatch-size "128" \
   --jinja & pid=$!
-cleanup() { kill "$pid" 2>/dev/null || :; }
-trap cleanup EXIT INT TERM
 
-while :; do
-  if "${VENV_PYTHON}" - <<'PY'
+check_service() {
+  "${VENV_PYTHON}" - <<'PY'
 import os
 from urllib.request import Request, urlopen
 
@@ -38,17 +38,13 @@ api_key = os.environ.get("MODEL_API_KEY")
 if api_key:
     request.add_header("Authorization", f"Bearer {api_key}")
 try:
-    with urlopen(request, timeout=5):
-        pass
+    urlopen(request, timeout=5).close()
 except Exception:
     raise SystemExit(1)
 PY
-  then
-    touch "${REPO_ROOT}/_state/runner/${RUN_TASK_NAME}.ready"
-    break
-  fi
-  kill -0 "$pid" 2>/dev/null || wait "$pid"
+}
+
+while ! check_service; do
+  kill -0 "$pid" 2>/dev/null || exit 1
   sleep 5
 done
-
-wait "$pid"

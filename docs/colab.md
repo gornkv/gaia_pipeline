@@ -45,7 +45,7 @@ BASE_MODEL_RUNNER_TYPE=llama16GB
 
 вьювер логов
 ```sh
-!nohup _state/.venv/bin/inspect view start --host 0.0.0.0 --port 7575 --log-dir _state/inspect-logs > /tmp/inspect-view.log 2>&1 &
+!nohup _state/.venv/bin/inspect view --host 0.0.0.0 --port 7575 --log-dir inspect-logs start > /tmp/inspect-view.log 2>&1 &
 
 from google.colab.output import eval_js
 print(eval_js("google.colab.kernel.proxyPort(7575)"))

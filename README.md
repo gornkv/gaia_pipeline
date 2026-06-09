@@ -40,7 +40,8 @@ Docker Compose starts one Ubuntu 24.04 based Python development container. It bi
 
 Runtime state is stored in the local ignored folder:
 
-- `_state/`: Python virtualenvs, Hugging Face cache, downloaded GGUF files, Inspect logs, Playwright browsers.
+- `_state/`: Python virtualenvs, Hugging Face cache, downloaded GGUF files, Playwright browsers.
+- `inspect-logs/`: Inspect eval logs. If `LOGS_BRANCH` is set, successful runs commit and push this folder to that branch.
 
 ## Run Without Docker
 

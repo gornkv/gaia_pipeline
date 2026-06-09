@@ -1,6 +1,8 @@
 #!/bin/sh
 set -aue
 
+pkill -f '[v]llm' 2>/dev/null && sleep 2
+
 "${VENV_PYTHON}" -m pip install "vllm>=0.22.1" ninja
 
 NVIDIA_LIB_PATHS="$("${VENV_PYTHON}" - <<'PY'
@@ -37,11 +39,9 @@ VLLM_USE_TRITON_AWQ=1
   --tool-call-parser qwen3_coder \
   --trust-remote-code \
   --enforce-eager & pid=$!
-cleanup() { kill "$pid" 2>/dev/null || :; }
-trap cleanup EXIT INT TERM
 
-while :; do
-  if "${VENV_PYTHON}" - <<'PY'
+check_service() {
+  "${VENV_PYTHON}" - <<'PY'
 import os
 from urllib.request import Request, urlopen
 
@@ -50,17 +50,13 @@ api_key = os.environ.get("MODEL_API_KEY")
 if api_key:
     request.add_header("Authorization", f"Bearer {api_key}")
 try:
-    with urlopen(request, timeout=5):
-        pass
+    urlopen(request, timeout=5).close()
 except Exception:
     raise SystemExit(1)
 PY
-  then
-    touch "${REPO_ROOT}/_state/runner/${RUN_TASK_NAME}.ready"
-    break
-  fi
-  kill -0 "$pid" 2>/dev/null || wait "$pid"
+}
+
+while ! check_service; do
+  kill -0 "$pid" 2>/dev/null || exit 1
   sleep 5
 done
-
-wait "$pid"

@@ -1,10 +1,10 @@
 #!/bin/sh
 set -aue
 
+pkill -f '[i]nspect eval' 2>/dev/null && sleep 2
+
 GAIA_MODEL_BASE_URL="${SCAFFOLD_MODEL_API_BASE_URL}"
 GAIA_MODEL_API_KEY="dummy"
-
-trap 'touch "${REPO_ROOT}/_state/runner/${RUN_TASK_NAME}.ready"' EXIT
 
 set -- eval "${GAIA_TASK}" \
   --model "openai-api/gaia_model/${SCAFFOLD_MODEL_NAME}" \

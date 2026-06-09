@@ -2,11 +2,19 @@
 set -aue
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-. "${REPO_ROOT}/.env"
+
+load_env() {
+  mkdir -p "${REPO_ROOT}/_state/env"
+  tr -d '\r' < "$1" > "${REPO_ROOT}/_state/env/$(basename "$1")"
+  . "${REPO_ROOT}/_state/env/$(basename "$1")"
+}
+
+load_env "${REPO_ROOT}/.env"
+cd "${REPO_ROOT}"
 
 VENV_PYTHON="${REPO_ROOT}/_state/.venv/bin/python"
 HF_HOME="${REPO_ROOT}/_state/huggingface"
-INSPECT_LOG_DIR="${REPO_ROOT}/_state/inspect-logs"
+INSPECT_LOG_DIR="${REPO_ROOT}/inspect-logs"
 PLAYWRIGHT_BROWSERS_PATH="${REPO_ROOT}/_state/playwright-browsers"
 PATH="${REPO_ROOT}/_state/.venv/bin:${PATH}"
 
@@ -41,33 +49,60 @@ install_environment() {
   "${VENV_PYTHON}" "${REPO_ROOT}/runner/check_environment.py"
 }
 
-run_background() {
-  RUN_TASK_NAME="$1"
-  . "${REPO_ROOT}/runner/${RUN_TASK_NAME}.env"
-  (
-    set +e
-    sh "${REPO_ROOT}/runner/${RUN_TASK_NAME}.sh" > "${REPO_ROOT}/_state/runner/${RUN_TASK_NAME}.log" 2>&1
-    echo "$?" > "${REPO_ROOT}/_state/runner/${RUN_TASK_NAME}.status"
-  ) &
-  RUN_PIDS="${RUN_PIDS:-} $!"
+publish_inspect_logs() {
+  [ -n "${LOGS_BRANCH:-}" ] || return
+  git check-ref-format --branch "${LOGS_BRANCH}" >/dev/null
 
-  while [ ! -f "${REPO_ROOT}/_state/runner/${RUN_TASK_NAME}.ready" ]; do
-    sleep 5
-  done
+  base_ref="HEAD"
+  if git show-ref --verify --quiet "refs/remotes/origin/${LOGS_BRANCH}"; then
+    base_ref="origin/${LOGS_BRANCH}"
+  elif git show-ref --verify --quiet "refs/heads/${LOGS_BRANCH}"; then
+    base_ref="${LOGS_BRANCH}"
+  fi
 
-  sleep 1
-  for f in "${REPO_ROOT}"/_state/runner/*.status; do
-    [ ! -f "$f" ] || exit "$(cat "$f")"
-  done
+  logs_index="${REPO_ROOT}/_state/logs-index"
+  rm -f "${logs_index}"
+
+  GIT_INDEX_FILE="${logs_index}" git read-tree "${base_ref}"
+  GIT_INDEX_FILE="${logs_index}" git add -f inspect-logs
+
+  if GIT_INDEX_FILE="${logs_index}" git diff --cached --quiet -- inspect-logs; then
+    echo "No inspect log changes to publish."
+    rm -f "${logs_index}"
+    return
+  fi
+
+  logs_tree="$(GIT_INDEX_FILE="${logs_index}" git write-tree)"
+  logs_parent="$(git rev-parse "${base_ref}^{commit}")"
+  logs_commit="$(git commit-tree "${logs_tree}" -p "${logs_parent}" -m "update inspect logs")"
+  origin_url="$(git config --get remote.origin.url)"
+  repo_path="${origin_url#git@github.com:}"
+  repo_path="${repo_path#https://github.com/}"
+  repo_path="${repo_path%.git}"
+  push_url="https://github.com/${repo_path}.git"
+
+  git update-ref "refs/heads/${LOGS_BRANCH}" "${logs_commit}"
+
+  git -c credential.helper= \
+    -c 'credential.helper=!f() {
+        echo username=x-access-token
+        echo password="$GITHUB_TOKEN"
+    }; f' \
+    push "${push_url}" "refs/heads/${LOGS_BRANCH}:refs/heads/${LOGS_BRANCH}"
+  rm -f "${logs_index}"
 }
-
-cleanup() { kill ${RUN_PIDS:-} 2>/dev/null || :; }
-trap cleanup EXIT INT TERM
 
 if ! "${VENV_PYTHON}" "${REPO_ROOT}/runner/check_environment.py" >/dev/null 2>&1; then
   install_environment
 fi
 
-run_background "2_run_base_model_${BASE_MODEL_RUNNER_TYPE}"
-run_background "3_run_scaffold"
-run_background "4_run_benchmark"
+RUN_TASK_NAME="2_run_base_model_${BASE_MODEL_RUNNER_TYPE}"
+load_env "${REPO_ROOT}/runner/${RUN_TASK_NAME}.env"
+sh "${REPO_ROOT}/runner/${RUN_TASK_NAME}.sh"
+
+load_env "${REPO_ROOT}/runner/3_run_scaffold.env"
+sh "${REPO_ROOT}/runner/3_run_scaffold.sh"
+
+sh "${REPO_ROOT}/runner/4_run_benchmark.sh"
+
+publish_inspect_logs
