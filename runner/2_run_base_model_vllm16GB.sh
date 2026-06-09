@@ -38,7 +38,9 @@ VLLM_USE_TRITON_AWQ=1
   --enable-auto-tool-choice \
   --tool-call-parser qwen3_coder \
   --trust-remote-code \
-  --enforce-eager & pid=$!
+  --enforce-eager \
+  > "${REPO_ROOT}/_state/runner/${RUN_TASK_NAME}.stdout" \
+  2> "${REPO_ROOT}/_state/runner/${RUN_TASK_NAME}.stderr" & pid=$!
 echo "${pid}" >> "${PID_FILE}"
 
 check_service() {

@@ -3,6 +3,18 @@ set -aue
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
+mkdir -p "${REPO_ROOT}/_state/runner"
+if [ "${START_LOGGING:-}" != "1" ]; then
+  rm -rf "${REPO_ROOT}/_state/runner"/*
+  START_STDOUT_PIPE="${REPO_ROOT}/_state/runner/start.stdout.pipe.$$"
+  START_STDERR_PIPE="${REPO_ROOT}/_state/runner/start.stderr.pipe.$$"
+  mkfifo "${START_STDOUT_PIPE}" "${START_STDERR_PIPE}"
+  START_LOGGING=1
+  tee "${REPO_ROOT}/_state/runner/start.stdout" < "${START_STDOUT_PIPE}" &
+  tee "${REPO_ROOT}/_state/runner/start.stderr" >&2 < "${START_STDERR_PIPE}" &
+  exec sh "$0" "$@" > "${START_STDOUT_PIPE}" 2> "${START_STDERR_PIPE}"
+fi
+
 load_env() {
   mkdir -p "${REPO_ROOT}/_state/env"
   tr -d '\r' < "$1" > "${REPO_ROOT}/_state/env/$(basename "$1")"
@@ -24,19 +36,22 @@ mkdir -p \
   "${INSPECT_LOG_DIR}" \
   "${PLAYWRIGHT_BROWSERS_PATH}" \
   "${REPO_ROOT}/_state/runner"
-rm -rf "${REPO_ROOT}/_state/runner"/*
 : > "${PID_FILE}"
 
 cleanup() {
-  [ -f "${PID_FILE}" ] || return
-  while IFS= read -r pid; do
-    [ -n "${pid}" ] || continue
-    kill "${pid}" 2>/dev/null || :
-  done < "${PID_FILE}"
-  exit
+  status=$?
+  if [ -f "${PID_FILE}" ]; then
+    while IFS= read -r pid; do
+      [ -n "${pid}" ] || continue
+      kill "${pid}" 2>/dev/null || :
+    done < "${PID_FILE}"
+  fi
+  rm -f "${START_STDOUT_PIPE:-}" "${START_STDERR_PIPE:-}"
+  exit "${status}"
 }
 
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 1' INT TERM
 
 create_venv() {
   if "${VENV_PYTHON}" -m pip --version >/dev/null 2>&1; then
