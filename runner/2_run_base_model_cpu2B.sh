@@ -12,8 +12,8 @@ pkill -f '[l]lama_cpp.server' 2>/dev/null && sleep 2
   --host "0.0.0.0" \
   --port "18080" \
   --n_gpu_layers 0 \
-  --n_ctx "4096" \
-  --n_threads "4" \
+  --n_ctx "65536" \
+  --n_threads "1" \
   --chat_format chatml \
   > "${REPO_ROOT}/_state/runner/${RUN_TASK_NAME}.stdout" \
   2> "${REPO_ROOT}/_state/runner/${RUN_TASK_NAME}.stderr" & pid=$!

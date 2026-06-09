@@ -83,7 +83,7 @@ publish_inspect_logs() {
   git switch -C "${LOGS_BRANCH}" "origin/${LOGS_BRANCH}" 2>/dev/null ||
     git switch -C "${LOGS_BRANCH}"
   git add inspect-logs
-  git commit -m "update inspect logs"
+  git -c user.name="gaia-pipeline" -c user.email="gaia-pipeline@example.invalid" commit -m "update inspect logs"
   git -c credential.helper= \
     -c 'credential.helper=!f() {
       echo username=x-access-token

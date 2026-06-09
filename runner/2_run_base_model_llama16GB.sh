@@ -26,7 +26,10 @@ LD_LIBRARY_PATH="${REPO_ROOT}/_state/llama.cpp-cuda/cuda-12.8${LD_LIBRARY_PATH:+
   --parallel "1" \
   --batch-size "512" \
   --ubatch-size "128" \
-  --jinja & pid=$!
+  --jinja \
+  > "${REPO_ROOT}/_state/runner/${RUN_TASK_NAME}.stdout" \
+  2> "${REPO_ROOT}/_state/runner/${RUN_TASK_NAME}.stderr" & pid=$!
+echo "${pid}" >> "${PID_FILE}"
 
 check_service() {
   "${VENV_PYTHON}" - <<'PY'
