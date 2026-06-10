@@ -3,6 +3,24 @@ set -aue
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
+load_env() {
+  ENV_FILE="${TMPDIR:-/tmp}/gaia-pipeline-env.$$"
+  tr -d '\r' < "$1" > "${ENV_FILE}"
+  . "${ENV_FILE}"
+}
+
+load_env "${REPO_ROOT}/.env"
+
+if [ "${WITH_GOOGLE_DRIVE:-}" = "1" ]; then
+  "${PYTHON_BIN:-python3}" <<'PY'
+import os
+from google.colab import drive
+
+os.makedirs("/content/_state", exist_ok=True)
+drive.mount("/content/_state")
+PY
+fi
+
 mkdir -p "${REPO_ROOT}/_state/runner"
 if [ "${START_LOGGING:-}" != "1" ]; then
   rm -rf "${REPO_ROOT}/_state/runner"/*
@@ -15,15 +33,6 @@ if [ "${START_LOGGING:-}" != "1" ]; then
   exec sh "$0" "$@" > "${START_STDOUT_PIPE}" 2> "${START_STDERR_PIPE}"
 fi
 
-load_env() {
-  mkdir -p "${REPO_ROOT}/_state/env"
-  tr -d '\r' < "$1" > "${REPO_ROOT}/_state/env/$(basename "$1")"
-  . "${REPO_ROOT}/_state/env/$(basename "$1")"
-}
-
-load_env "${REPO_ROOT}/.env"
-cd "${REPO_ROOT}"
-
 VENV_PYTHON="${REPO_ROOT}/.venv/bin/python"
 HF_HOME="${REPO_ROOT}/_state/huggingface"
 INSPECT_LOG_DIR="${REPO_ROOT}/_state/inspect-logs"
@@ -31,6 +40,7 @@ PLAYWRIGHT_BROWSERS_PATH="${REPO_ROOT}/_state/playwright-browsers"
 PATH="${REPO_ROOT}/.venv/bin:${PATH}"
 PID_FILE="${REPO_ROOT}/_state/runner/pids"
 
+cd "${REPO_ROOT}"
 mkdir -p \
   "${HF_HOME}" \
   "${INSPECT_LOG_DIR}" \

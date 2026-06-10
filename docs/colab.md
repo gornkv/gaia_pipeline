@@ -14,6 +14,7 @@
 затем зайти в файлы, показать скрытые, создать .env скопировав все из .env.example
 добавить HF_TOKEN, аккаунт должен согласится с правилами на https://huggingface.co/datasets/gaia-benchmark/GAIA
 установить BASE_MODEL_RUNNER_TYPE=llama16GB
+если нужно хранить `_state` на Google Drive между Colab-сессиями, добавить `WITH_GOOGLE_DRIVE=1`
 
 Этот режим скачивает готовый CUDA llama.cpp server из релизов ai-dock/llama.cpp-cuda и запускает GGUF:
 
