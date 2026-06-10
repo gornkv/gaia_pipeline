@@ -14,8 +14,8 @@ load_env "${REPO_ROOT}/.env"
 mkdir -p "${REPO_ROOT}/_state/runner"
 if [ "${START_LOGGING:-}" != "1" ]; then
   rm -rf "${REPO_ROOT}/_state/runner"/*
-  START_STDOUT_PIPE="${REPO_ROOT}/_state/runner/start.stdout.pipe.$$"
-  START_STDERR_PIPE="${REPO_ROOT}/_state/runner/start.stderr.pipe.$$"
+  START_STDOUT_PIPE="${TMPDIR:-/tmp}/gaia-pipeline.stdout.pipe.$$"
+  START_STDERR_PIPE="${TMPDIR:-/tmp}/gaia-pipeline.stderr.pipe.$$"
   mkfifo "${START_STDOUT_PIPE}" "${START_STDERR_PIPE}"
   START_LOGGING=1
   tee "${REPO_ROOT}/_state/runner/start.stdout" < "${START_STDOUT_PIPE}" &
