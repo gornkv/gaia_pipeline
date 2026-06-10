@@ -18,7 +18,7 @@
 
 ```python
 from google.colab import drive
-drive.mount("/content/gaia_pipeline/_state")
+drive.mount("/content/drive")
 ```
 
 Этот режим скачивает готовый CUDA llama.cpp server из релизов ai-dock/llama.cpp-cuda и запускает GGUF:
@@ -49,7 +49,12 @@ from google.colab import drive
   echo 'GAIA_SAMPLE_END=1' >> .env && \
   sleep 1
 
-drive.mount("/content/gaia_pipeline/_state")
+drive.mount("/content/drive")
+%cd /content
+!mkdir -p drive/MyDrive/gaia_pipeline/_state
+![ ! -L gaia_pipeline/_state ] && \
+  rm -rf gaia_pipeline/_state && \
+  ln -s /content/drive/MyDrive/gaia_pipeline/_state gaia_pipeline/_state
 
 %cd /content/gaia_pipeline
 !git pull
