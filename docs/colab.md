@@ -35,18 +35,25 @@ BASE_MODEL_RUNNER_TYPE=llama16GB
 
 хелпер для быстрого запуска
 
-```sh
+```python
+from google.colab import drive
+
 %cd /content
 
 ![ ! -d gaia_pipeline/.git ] && \
   git clone https://github.com/gornkv/gaia_pipeline.git && \
-  cp gaia_pipeline/.env.example gaia_pipeline/.env && \
-  echo 'HF_TOKEN=hf_token' >> gaia_pipeline/.env
+  cd gaia_pipeline && \
+  cp .env.example .env && \
+  echo 'HF_TOKEN=hf_aaaaaaaaaaaaaaaaa' >> .env && \
+  echo 'GAIA_SAMPLE_START=1' >> .env && \
+  echo 'GAIA_SAMPLE_END=1' >> .env && \
+  sleep 1
+
+drive.mount("/content/gaia_pipeline/_state")
 
 %cd /content/gaia_pipeline
 !git pull
 !sh runner/start.sh
-
 ```
 
 вьювер логов
