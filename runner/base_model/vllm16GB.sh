@@ -22,8 +22,8 @@ PATH="${REPO_ROOT}/.venv/bin:${PATH}"
 VLLM_USE_TRITON_AWQ=1
 
 "${REPO_ROOT}/.venv/bin/vllm" serve "QuantTrio/Qwen3.5-9B-AWQ" \
-  --served-model-name "${MODEL_NAME}" \
-  --api-key "${MODEL_API_KEY}" \
+  --served-model-name "${BASE_MODEL_NAME}" \
+  --api-key "${BASE_MODEL_API_KEY}" \
   --host "0.0.0.0" \
   --port "18081" \
   --dtype float16 \
@@ -39,8 +39,8 @@ VLLM_USE_TRITON_AWQ=1
   --tool-call-parser qwen3_coder \
   --trust-remote-code \
   --enforce-eager \
-  > "${REPO_ROOT}/_state/runner/${RUN_TASK_NAME}.stdout" \
-  2> "${REPO_ROOT}/_state/runner/${RUN_TASK_NAME}.stderr" & pid=$!
+  > "${REPO_ROOT}/_state/runner/${BASE_MODEL_RUNNER_TYPE}.stdout" \
+  2> "${REPO_ROOT}/_state/runner/${BASE_MODEL_RUNNER_TYPE}.stderr" & pid=$!
 echo "${pid}" >> "${PID_FILE}"
 
 check_service() {
@@ -49,7 +49,7 @@ import os
 from urllib.request import Request, urlopen
 
 request = Request("http://127.0.0.1:18081/v1/models")
-api_key = os.environ.get("MODEL_API_KEY")
+api_key = os.environ.get("BASE_MODEL_API_KEY")
 if api_key:
     request.add_header("Authorization", f"Bearer {api_key}")
 try:

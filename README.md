@@ -36,11 +36,11 @@ docker compose up
 Docker Compose starts one Ubuntu 24.04 based Python development container. It bind-mounts this project into `/workspace`, uses that as the working directory, then runs `sh runner/start.sh`:
 
 - `gaia`: runs `sh runner/start.sh`.
-- `runner/start.sh`: installs dependencies, sources `runner/<name>.env`, starts the selected base model runner, starts `svc_scaffold`, then starts the benchmark job. If any background service exits, the whole run exits.
+- `runner/start.sh`: installs dependencies, sources `runner/base_model/${BASE_MODEL_RUNNER_TYPE}.env`, starts the selected base model runner, starts `svc_scaffold`, then starts the benchmark job. If any background service exits, the whole run exits.
 
 Runtime state is stored in the local ignored folder:
 
-- `_state/`: Python virtualenvs, Hugging Face cache, downloaded GGUF files, Playwright browsers.
+- `_state/`: Python virtualenvs, Hugging Face cache, downloaded GGUF files, Playwright browsers, runner logs, and Inspect eval logs.
 
 ## Run Without Docker
 

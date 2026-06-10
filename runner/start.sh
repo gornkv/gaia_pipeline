@@ -106,4 +106,3 @@ load_env "${REPO_ROOT}/runner/base_model/${BASE_MODEL_RUNNER_TYPE}.env"
 sh "${REPO_ROOT}/runner/base_model/${BASE_MODEL_RUNNER_TYPE}.sh"
 sh "${REPO_ROOT}/runner/scaffold.sh"
 sh "${REPO_ROOT}/runner/benchmark.sh"
-
