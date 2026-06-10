@@ -24,11 +24,11 @@ load_env() {
 load_env "${REPO_ROOT}/.env"
 cd "${REPO_ROOT}"
 
-VENV_PYTHON="${REPO_ROOT}/_state/.venv/bin/python"
+VENV_PYTHON="${REPO_ROOT}/.venv/bin/python"
 HF_HOME="${REPO_ROOT}/_state/huggingface"
 INSPECT_LOG_DIR="${REPO_ROOT}/inspect-logs"
 PLAYWRIGHT_BROWSERS_PATH="${REPO_ROOT}/_state/playwright-browsers"
-PATH="${REPO_ROOT}/_state/.venv/bin:${PATH}"
+PATH="${REPO_ROOT}/.venv/bin:${PATH}"
 PID_FILE="${REPO_ROOT}/_state/runner/pids"
 
 mkdir -p \
@@ -58,12 +58,12 @@ create_venv() {
     return
   fi
 
-  if "${PYTHON_BIN:-python3}" -m venv "${REPO_ROOT}/_state/.venv"; then
+  if "${PYTHON_BIN:-python3}" -m venv "${REPO_ROOT}/.venv"; then
     return
   fi
 
-  rm -rf "${REPO_ROOT}/_state/.venv"
-  "${PYTHON_BIN:-python3}" -m venv --system-site-packages --without-pip "${REPO_ROOT}/_state/.venv"
+  rm -rf "${REPO_ROOT}/.venv"
+  "${PYTHON_BIN:-python3}" -m venv --system-site-packages --without-pip "${REPO_ROOT}/.venv"
   "${VENV_PYTHON}" -m pip install --upgrade pip wheel setuptools
 }
 
@@ -72,7 +72,7 @@ install_environment() {
   "${VENV_PYTHON}" -m pip install \
     pip wheel setuptools "inspect-evals[gaia]" inspect-tool-support openai playwright \
     -r "${REPO_ROOT}/svc_scaffold/requirement.txt"
-  "${REPO_ROOT}/_state/.venv/bin/inspect-tool-support" post-install
+  "${REPO_ROOT}/.venv/bin/inspect-tool-support" post-install
   "${VENV_PYTHON}" -m playwright install chromium
   "${VENV_PYTHON}" "${REPO_ROOT}/runner/check_environment.py"
 }
@@ -95,13 +95,12 @@ if ! "${VENV_PYTHON}" "${REPO_ROOT}/runner/check_environment.py" >/dev/null 2>&1
   install_environment
 fi
 
-RUN_TASK_NAME="2_run_base_model_${BASE_MODEL_RUNNER_TYPE}"
-load_env "${REPO_ROOT}/runner/${RUN_TASK_NAME}.env"
-sh "${REPO_ROOT}/runner/${RUN_TASK_NAME}.sh"
+load_env "${REPO_ROOT}/runner/base_model/${BASE_MODEL_RUNNER_TYPE}.env"
+sh "${REPO_ROOT}/runner/base_model/${BASE_MODEL_RUNNER_TYPE}.sh"
 
-load_env "${REPO_ROOT}/runner/3_run_scaffold.env"
-sh "${REPO_ROOT}/runner/3_run_scaffold.sh"
+load_env "${REPO_ROOT}/runner/scaffold.env"
+sh "${REPO_ROOT}/runner/scaffold.sh"
 
-sh "${REPO_ROOT}/runner/4_run_benchmark.sh"
+sh "${REPO_ROOT}/runner/benchmark.sh"
 
 publish_inspect_logs

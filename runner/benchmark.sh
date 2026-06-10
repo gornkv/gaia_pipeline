@@ -21,4 +21,4 @@ if [ -n "${GAIA_MAX_SAMPLES:-}" ]; then
   set -- "$@" --max-samples "${GAIA_MAX_SAMPLES}"
 fi
 
-"${REPO_ROOT}/_state/.venv/bin/inspect" "$@"
+"${REPO_ROOT}/.venv/bin/inspect" "$@"

@@ -18,10 +18,10 @@ print(":".join(paths))
 PY
 )"
 LD_LIBRARY_PATH="${NVIDIA_LIB_PATHS}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-PATH="${REPO_ROOT}/_state/.venv/bin:${PATH}"
+PATH="${REPO_ROOT}/.venv/bin:${PATH}"
 VLLM_USE_TRITON_AWQ=1
 
-"${REPO_ROOT}/_state/.venv/bin/vllm" serve "QuantTrio/Qwen3.5-9B-AWQ" \
+"${REPO_ROOT}/.venv/bin/vllm" serve "QuantTrio/Qwen3.5-9B-AWQ" \
   --served-model-name "${MODEL_NAME}" \
   --api-key "${MODEL_API_KEY}" \
   --host "0.0.0.0" \
