@@ -8,9 +8,9 @@ from svc_scaffold.core import Scaffold
 
 
 model_client = OpenAICompatibleModelClient(
-    os.environ["MODEL_API_BASE_URL"],
-    os.environ["MODEL_API_KEY"],
-    os.environ["MODEL_NAME"],
+    os.environ["BASE_MODEL_API_BASE_URL"],
+    os.environ["BASE_MODEL_API_KEY"],
+    os.environ["BASE_MODEL_NAME"],
 )
 scaffold = Scaffold(model_client, max(1, int(os.getenv("SCAFFOLD_BON_CANDIDATES", "3"))))
 

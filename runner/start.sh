@@ -26,7 +26,7 @@ cd "${REPO_ROOT}"
 
 VENV_PYTHON="${REPO_ROOT}/.venv/bin/python"
 HF_HOME="${REPO_ROOT}/_state/huggingface"
-INSPECT_LOG_DIR="${REPO_ROOT}/inspect-logs"
+INSPECT_LOG_DIR="${REPO_ROOT}/_state/inspect-logs"
 PLAYWRIGHT_BROWSERS_PATH="${REPO_ROOT}/_state/playwright-browsers"
 PATH="${REPO_ROOT}/.venv/bin:${PATH}"
 PID_FILE="${REPO_ROOT}/_state/runner/pids"
@@ -67,6 +67,27 @@ create_venv() {
   "${VENV_PYTHON}" -m pip install --upgrade pip wheel setuptools
 }
 
+check_evironment() {
+  "${VENV_PYTHON}" - <<'PY'
+from importlib.metadata import version
+from shutil import which
+
+import fastapi  # noqa: F401
+import httpx  # noqa: F401
+import inspect_ai  # noqa: F401
+import inspect_evals.gaia  # noqa: F401
+import openai  # noqa: F401
+import playwright  # noqa: F401
+import uvicorn  # noqa: F401
+
+print(f"inspect-ai={version('inspect-ai')}")
+print(f"inspect-evals={version('inspect-evals')}")
+
+if which("inspect-tool-support") is None:
+    raise RuntimeError("inspect-tool-support executable is not available on PATH")
+PY
+}
+
 install_environment() {
   create_venv
   "${VENV_PYTHON}" -m pip install \
@@ -74,33 +95,15 @@ install_environment() {
     -r "${REPO_ROOT}/svc_scaffold/requirement.txt"
   "${REPO_ROOT}/.venv/bin/inspect-tool-support" post-install
   "${VENV_PYTHON}" -m playwright install chromium
-  "${VENV_PYTHON}" "${REPO_ROOT}/runner/check_environment.py"
+  check_evironment
 }
 
-publish_inspect_logs() {
-  [ -n "${LOGS_BRANCH:-}" ] || return
-  git fetch origin
-  git switch -C "${LOGS_BRANCH}" "origin/${LOGS_BRANCH}" 2>/dev/null ||
-    git switch -C "${LOGS_BRANCH}"
-  git add inspect-logs
-  git -c user.name="gaia-pipeline" -c user.email="gaia-pipeline@example.invalid" commit -m "update inspect logs"
-  git -c credential.helper= \
-    -c 'credential.helper=!f() {
-      echo username=x-access-token
-      echo password="$GITHUB_TOKEN"
-    }; f' push origin "${LOGS_BRANCH}"
-}
-
-if ! "${VENV_PYTHON}" "${REPO_ROOT}/runner/check_environment.py" >/dev/null 2>&1; then
+if ! check_evironment >/dev/null 2>&1; then
   install_environment
 fi
 
 load_env "${REPO_ROOT}/runner/base_model/${BASE_MODEL_RUNNER_TYPE}.env"
 sh "${REPO_ROOT}/runner/base_model/${BASE_MODEL_RUNNER_TYPE}.sh"
-
-load_env "${REPO_ROOT}/runner/scaffold.env"
 sh "${REPO_ROOT}/runner/scaffold.sh"
-
 sh "${REPO_ROOT}/runner/benchmark.sh"
 
-publish_inspect_logs

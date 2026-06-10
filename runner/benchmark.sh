@@ -3,9 +3,6 @@ set -aue
 
 pkill -f '[i]nspect eval' 2>/dev/null && sleep 2
 
-GAIA_MODEL_BASE_URL="${SCAFFOLD_MODEL_API_BASE_URL}"
-GAIA_MODEL_API_KEY="dummy"
-
 set -- eval "${GAIA_TASK}" \
   --model "openai-api/gaia_model/${SCAFFOLD_MODEL_NAME}" \
   --sandbox "${GAIA_SANDBOX}" \
