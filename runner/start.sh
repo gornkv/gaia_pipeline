@@ -11,18 +11,6 @@ load_env() {
 
 load_env "${REPO_ROOT}/.env"
 
-if [ "${WITH_GOOGLE_DRIVE:-}" = "1" ]; then
-  "${PYTHON_BIN:-python3}" - "${REPO_ROOT}/_state" <<'PY'
-import os
-import sys
-from google.colab import drive
-
-mountpoint = os.path.abspath(sys.argv[1])
-os.makedirs(mountpoint, exist_ok=True)
-drive.mount(mountpoint)
-PY
-fi
-
 mkdir -p "${REPO_ROOT}/_state/runner"
 if [ "${START_LOGGING:-}" != "1" ]; then
   rm -rf "${REPO_ROOT}/_state/runner"/*
