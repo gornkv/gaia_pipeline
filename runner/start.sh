@@ -26,7 +26,7 @@ fi
 VENV_PYTHON="${REPO_ROOT}/.venv/bin/python"
 HF_HOME="${REPO_ROOT}/_state/huggingface"
 INSPECT_LOG_DIR="${REPO_ROOT}/_state/inspect-logs"
-PLAYWRIGHT_BROWSERS_PATH="${REPO_ROOT}/_state/playwright-browsers"
+PLAYWRIGHT_BROWSERS_PATH="${REPO_ROOT}/playwright-browsers"
 PATH="${REPO_ROOT}/.venv/bin:${PATH}"
 PID_FILE="${REPO_ROOT}/_state/runner/pids"
 
