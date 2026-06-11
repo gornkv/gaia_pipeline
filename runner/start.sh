@@ -88,15 +88,6 @@ if which("inspect-tool-support") is None:
 PY
 }
 
-fix_playwright_browser_permissions() {
-  [ -d "${PLAYWRIGHT_BROWSERS_PATH}" ] || return 0
-  find "${PLAYWRIGHT_BROWSERS_PATH}" -type f \( \
-    -name "chrome" -o \
-    -name "chrome_crashpad_handler" -o \
-    -name "headless_shell" \
-  \) -exec chmod +x {} \;
-}
-
 install_environment() {
   create_venv
   "${VENV_PYTHON}" -m pip install \
@@ -104,14 +95,12 @@ install_environment() {
     -r "${REPO_ROOT}/svc_scaffold/requirement.txt"
   "${REPO_ROOT}/.venv/bin/inspect-tool-support" post-install
   "${VENV_PYTHON}" -m playwright install chromium
-  fix_playwright_browser_permissions
   check_evironment
 }
 
 if ! check_evironment >/dev/null 2>&1; then
   install_environment
 fi
-fix_playwright_browser_permissions
 
 load_env "${REPO_ROOT}/runner/base_model/${BASE_MODEL_RUNNER_TYPE}.env"
 sh "${REPO_ROOT}/runner/base_model/${BASE_MODEL_RUNNER_TYPE}.sh"
