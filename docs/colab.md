@@ -39,7 +39,6 @@ BASE_MODEL_RUNNER_TYPE=llama16GB
 from google.colab import drive
 
 %cd /content
-
 ![ ! -d gaia_pipeline/.git ] && \
   git clone https://github.com/gornkv/gaia_pipeline.git && \
   cd gaia_pipeline && \
@@ -60,6 +59,8 @@ drive.mount("/content/drive")
 !git pull
 !sh runner/start.sh
 ```
+
+Потом https://drive.google.com/drive/my-drive и там в корне будет папка gaia_pipeline
 
 вьювер логов
 ```sh
