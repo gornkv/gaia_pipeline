@@ -1,3 +1,14 @@
 fastapi>=0.115,<1
 httpx>=0.27,<1
 uvicorn[standard]>=0.30,<1
+
+# Additional runtime dependencies used by the runner/scaffold
+inspect-ai
+inspect-evals[gaia]
+inspect-tool-support
+openai
+playwright
+llama-cpp-python
+huggingface-hub
+vllm>=0.22.1
+ninja

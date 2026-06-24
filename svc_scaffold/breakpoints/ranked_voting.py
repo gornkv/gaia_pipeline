@@ -3,7 +3,7 @@ from __future__ import annotations
 # Ranked Voting Self-Consistency (arxiv 2505.10772)
 # Prompts model to output top-3 ranked answers, then aggregates
 # via IRV, Borda Count (BCV), or Mean Reciprocal Rank Voting (MRRV).
-# Mode: RANKED_VOTING_MODE=irv|bcv|mrrv (default bcv)
+# Modes: RANKED_VOTING_MODE=irv|bcv|mrrv (default bcv)
 
 import os
 from collections import Counter
@@ -33,7 +33,7 @@ def _extract_ranked(response: dict, n: int) -> list[str]:
 def _irv(rankings: list[list[str]]) -> str:
     active = list(set(c for r in rankings for c in r))
     while len(active) > 1:
-        first = Counter()
+        first = Counter({c: 0 for c in active})
         for r in rankings:
             for c in r:
                 if c in active:

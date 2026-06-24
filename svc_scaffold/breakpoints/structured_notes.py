@@ -4,6 +4,7 @@ from __future__ import annotations
 # Adds write_note and read_notes tools to the system prompt for
 # persistent just-in-time memory without growing context.
 
+import json
 from typing import Any
 
 import svc_scaffold.openai_helpers as h
@@ -39,14 +40,17 @@ SYSTEM_INSTRUCTION = (
 
 
 class Breakpoints:
-    def __init__(self):
+    def __init__(self, model_client=None):
         self.store: dict[str, Any] = {}
+        self.store["notes"] = []
+        self.model_client = model_client
 
     @staticmethod
     def feature_name():
         return "FEATURE_STRUCTURED_NOTES"
 
     def before_task_call(self, payload):
+        self.store["notes"] = []
         payload = dict(payload)
         tools = list(payload.get("tools", []))
         for tool in NOTE_TOOLS:
@@ -78,5 +82,42 @@ class Breakpoints:
     def after_task_call(self, response):
         return response, None
 
-    def before_tool_call(self, response):
-        return response
+    def before_tool_call(self, response, payload=None):
+        tool_calls = h.tool_calls(response)
+        if not tool_calls:
+            return response
+
+        handled = []
+        messages = list(h.messages(payload)) if payload is not None else []
+        for call in tool_calls:
+            # OpenAI tool_calls format: {"id": "...", "type": "function", "function": {"name": ..., "arguments": ...}}
+            fn = call.get("function") if isinstance(call.get("function"), dict) else {}
+            name = call.get("name") or fn.get("name")
+            tool_call_id = call.get("id", "")
+            if name == "write_note":
+                raw_args = call.get("arguments") or fn.get("arguments") or {}
+                args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args if isinstance(raw_args, dict) else {})
+                content = args.get("content") if isinstance(args, dict) else None
+                if content:
+                    self.store["notes"].append(str(content))
+                handled.append((call, {"role": "tool", "tool_call_id": tool_call_id, "content": "OK"}))
+            elif name == "read_notes":
+                note_text = "\n".join(self.store.get("notes", [])) or "No notes available."
+                handled.append((call, {"role": "tool", "tool_call_id": tool_call_id, "content": note_text}))
+
+        if not handled:
+            return response
+
+        # Synthesize tool results and rerun the model on the augmented history.
+        new_msgs = list(messages)
+        assistant_message = dict(h.message(response))
+        if assistant_message:
+            new_msgs.append({"role": "assistant", **assistant_message})
+        else:
+            new_msgs.append({"role": "assistant", "content": h.message(response).get("content", "")})
+        for _, tool_result in handled:
+            new_msgs.append(tool_result)
+        new_payload = dict(payload) if payload is not None else {}
+        new_payload["messages"] = new_msgs
+        print(f"[STRUCTURED_NOTES] handled {len(handled)} note tool call(s) internally", flush=True)
+        return response, new_payload

@@ -11,6 +11,10 @@ load_env() {
 
 load_env "${REPO_ROOT}/.env"
 
+# Ensure /shared_files exists and is owned by the current user (fix inspect sandbox setup)
+mkdir -p /shared_files 2>/dev/null || sudo mkdir -p /shared_files || true
+chown "$(id -u):$(id -g)" /shared_files 2>/dev/null || sudo chown "$(id -u):$(id -g)" /shared_files 2>/dev/null || true
+
 mkdir -p "${REPO_ROOT}/_state/runner"
 if [ "${START_LOGGING:-}" != "1" ]; then
   rm -rf "${REPO_ROOT}/_state/runner"/*

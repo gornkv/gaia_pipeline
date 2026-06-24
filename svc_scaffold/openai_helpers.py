@@ -14,12 +14,17 @@ def message(response: dict[str, Any]) -> dict[str, Any]:
 
 
 def tool_calls(response: dict[str, Any]) -> list[dict[str, Any]]:
-    calls = message(response).get("tool_calls") or []
-    return [call for call in calls if isinstance(call, dict)]
+    calls = []
+    message_payload = message(response)
+    if isinstance(message_payload.get("tool_calls"), list):
+        calls.extend(c for c in message_payload.get("tool_calls") if isinstance(c, dict))
+    if isinstance(message_payload.get("function_call"), dict):
+        calls.append(message_payload.get("function_call"))
+    return calls
 
 
 def has_tool_call(response: dict[str, Any]) -> bool:
-    return bool(tool_calls(response)) or isinstance(message(response).get("function_call"), dict)
+    return bool(tool_calls(response))
 
 
 def has_tool_result(payload: dict[str, Any]) -> bool:

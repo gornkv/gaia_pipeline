@@ -27,8 +27,9 @@ def _guidelines_block() -> str:
 
 
 class Breakpoints:
-    def __init__(self):
+    def __init__(self, model_client=None):
         self.store: dict[str, Any] = {}
+        self.model_client = model_client
 
     @staticmethod
     def feature_name():
@@ -36,7 +37,6 @@ class Breakpoints:
 
     def before_task_call(self, payload):
         self.store["tokens_used"] = 0
-        # Inject guidelines into existing system message or prepend a new one
         msgs = list(h.messages(payload))
         block = _guidelines_block()
         injected = False
@@ -64,11 +64,37 @@ class Breakpoints:
             self.store["tokens_used"] = self.store.get("tokens_used", 0) + (usage.get("total_tokens") or 0)
         return response, None
 
-    def after_task_call(self, response):
+    async def _optimize_guidelines(self, tokens_used: int) -> None:
+        prompt = (
+            f"These compression guidelines were used, but the response exceeded the token budget "
+            f"({tokens_used} tokens used, limit {TOKEN_BUDGET}).\n\n"
+            "Current guidelines:\n" + "\n".join(f"- {g}" for g in _guidelines) + "\n\n"
+            "Rewrite them to be stricter and more specific. "
+            "Output ONLY the updated guidelines as a bullet list, one per line starting with '- '."
+        )
+        payload = {
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.0,
+            "max_tokens": 256,
+        }
+        result = await self.model_client.chat_completions(payload)
+        content = (h.message(result).get("content") or "").strip()
+        if not content:
+            return
+        new_lines = [ln.lstrip("- ").strip() for ln in content.split("\n") if ln.strip().startswith("-")]
+        if new_lines:
+            _guidelines.clear()
+            _guidelines.extend(new_lines[:6])
+            print(f"[ACON] guidelines updated via LLM ({len(_guidelines)} rules)", flush=True)
+
+    async def after_task_call(self, response):
         tokens = self.store.get("tokens_used", 0)
-        if tokens > TOKEN_BUDGET and _guidelines:
-            _guidelines[-1] = _guidelines[-1].rstrip(".") + " — be even briefer."
-            print(f"[ACON] over budget ({tokens}/{TOKEN_BUDGET}), tightened guidelines", flush=True)
+        if tokens > TOKEN_BUDGET:
+            if self.model_client:
+                await self._optimize_guidelines(tokens)
+            else:
+                _guidelines[-1] = _guidelines[-1].rstrip(".") + " — be even briefer."
+                print(f"[ACON] over budget ({tokens}/{TOKEN_BUDGET}), tightened last guideline (no model_client)", flush=True)
         else:
             print(f"[ACON] task done, tokens_used={tokens}/{TOKEN_BUDGET}", flush=True)
         self.store = {}
