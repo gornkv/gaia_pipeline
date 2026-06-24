@@ -1,19 +1,16 @@
-llm_judge.pyfrom __future__ import annotations
+from __future__ import annotations
 
 # LLM-as-Judge / ATLAS-style (arxiv 2606.01667)
-# After collecting N answers, uses the longest answer as a heuristic proxy
-# for the best answer. In production, this would call a judge model.
+# После сбора N ответов вызывает модель как судью для выбора лучшего.
 
-import os
+import os, re
 from typing import Any
 
+import requests
 import svc_scaffold.openai_helpers as h
 
 BRANCHES = int(os.getenv("LLM_JUDGE_BRANCHES", "3"))
-
-
-def _response_length(response: dict) -> int:
-    return len(h.message(response).get("content", "") or "")
+BASE_URL = os.environ.get("BASE_MODEL_API_BASE_URL", "http://127.0.0.1:18080/v1")
 
 
 class Breakpoints:
@@ -30,32 +27,55 @@ class Breakpoints:
             self.store["branch_payload"] = payload
         return payload
 
-    def before_chat_message(self, payload):
-        return payload
-
-    def after_chat_message(self, response):
-        return response, None
-
-    def after_tool_call(self, payload):
-        return payload
+    def before_chat_message(self, payload): return payload
+    def after_chat_message(self, response): return response, None
+    def after_tool_call(self, payload): return payload
 
     def after_task_call(self, response):
         if response is not None:
             self.store["responses"].append(response)
-        branch_num = len(self.store["responses"])
-        print(f"[LLM_JUDGE] branch {branch_num}/{BRANCHES}", flush=True)
+
+        print(f"[LLM_JUDGE] branch {len(self.store['responses'])}/{BRANCHES}", flush=True)
+
         if len(self.store["responses"]) < BRANCHES:
             return None, self.store["branch_payload"]
+
         responses = [r for r in self.store["responses"] if r is not None]
-        if not responses:
-            best = response
-        elif len(responses) == 1:
-            best = responses[0]
+
+        if len(responses) < 2:
+            best = responses[0] if responses else response
         else:
-            best = max(responses, key=_response_length)
-        print(f"[LLM_JUDGE] selected best of {len(responses)} candidates", flush=True)
+            # Настоящий LLM-as-Judge
+            judge_prompt = (
+                "You are an expert evaluator. Below are candidate answers to the same question. "
+                "Select the BEST answer. Output ONLY the number (1, 2, 3, ...) of the best candidate.\n\n"
+            )
+            for i, r in enumerate(responses):
+                content = h.message(r).get("content", "")[:500]
+                judge_prompt += f"Candidate {i+1}:\n{content}\n\n"
+            judge_prompt += "BEST candidate number:"
+
+            try:
+                judge_resp = requests.post(
+                    f"{BASE_URL}/chat/completions",
+                    json={
+                        "messages": [{"role": "user", "content": judge_prompt}],
+                        "max_tokens": 5,
+                        "temperature": 0,
+                    },
+                    timeout=30,
+                )
+                judge_answer = judge_resp.json()["choices"][0]["message"]["content"].strip()
+                match = re.search(r"\d+", judge_answer)
+                best_idx = int(match.group()) - 1 if match else 0
+                best_idx = max(0, min(best_idx, len(responses) - 1))
+                best = responses[best_idx]
+                print(f"[LLM_JUDGE] Judge selected candidate {best_idx+1}/{len(responses)}", flush=True)
+            except Exception as e:
+                print(f"[LLM_JUDGE] Judge call failed: {e}, using fallback", flush=True)
+                best = max(responses, key=lambda r: len(h.message(r).get("content", "")))
+
         self.store = {}
         return best, None
 
-    def before_tool_call(self, response):
-        return response
+    def before_tool_call(self, response): return response
