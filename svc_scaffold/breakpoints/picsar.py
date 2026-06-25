@@ -4,7 +4,7 @@ from __future__ import annotations
 # Scores reasoning chains by joint log-likelihood of reasoning + answer.
 # Requires logprobs from the API. Falls back gracefully if unavailable.
 #
-# Score = Reasoning Confidence + Answer Confidence
+#   Score = Reasoning Confidence + Answer Confidence
 #   Reasoning Confidence = sum of token logprobs in the reasoning chain
 #   Answer Confidence = logprob of the final answer given reasoning + prompt
 
@@ -18,7 +18,6 @@ BRANCHES = int(os.getenv("PICSAR_BRANCHES", "6"))
 USE_NORMALIZED = os.getenv("PICSAR_NORMALIZED", "0") == "1"
 BASE_URL = os.environ.get("BASE_MODEL_API_BASE_URL", "http://127.0.0.1:18080/v1")
 
-# Prompt for computing answer confidence (⟨a⟩ in the paper)
 ANSWER_CONFIDENCE_PROMPT = (
     "Based on the reasoning above, what is the final answer? "
     "Provide ONLY the final answer, nothing else."
@@ -30,9 +29,7 @@ def _extract_final_answer(response: dict) -> str:
     content = h.message(response).get("content", "") or ""
     if not isinstance(content, str):
         return ""
-    # Ищем последнюю строку с числом или "answer"
     lines = [l.strip() for l in content.split("\n") if l.strip()]
-    # Приоритет: строка с "answer", потом последняя непустая строка
     for line in reversed(lines):
         if "answer" in line.lower() and any(c.isdigit() for c in line):
             return line
@@ -92,7 +89,6 @@ class Breakpoints:
     def feature_name():
         return "FEATURE_PICSAR"
 
-    # ─── BP2: before_task_call ───
     def before_task_call(self, payload):
         if self.store.get("responses") is None:
             self.store["responses"] = []
@@ -101,14 +97,12 @@ class Breakpoints:
             self.store["answer_scores"] = []      # Answer Confidence
         return payload
 
-    # ─── BP3: before_chat_message ───
     def before_chat_message(self, payload):
         payload = dict(payload)
         payload["logprobs"] = True
         payload["top_logprobs"] = 1
         return payload
 
-    # ─── BP4: after_chat_message ───
     def after_chat_message(self, response):
         """Extract reasoning confidence from logprobs."""
         if response is None:
@@ -119,12 +113,20 @@ class Breakpoints:
             choices = response.get("choices", [])
             if choices:
                 logprobs = choices[0].get("logprobs")
-                if logprobs and "token_logprobs" in logprobs:
-                    token_logprobs = logprobs["token_logprobs"]
-                    if token_logprobs:
+                if logprobs:
+                    content_probs = logprobs.get("content")
+                    if isinstance(content_probs, list) and content_probs:
                         logprobs_score = sum(
-                            lp for lp in token_logprobs if lp is not None
+                            item["logprob"] for item in content_probs
+                            if item.get("logprob") is not None
                         )
+                    # Old format: token_logprobs is a flat list of floats
+                    elif "token_logprobs" in logprobs:
+                        token_logprobs = logprobs["token_logprobs"]
+                        if token_logprobs:
+                            logprobs_score = sum(
+                                lp for lp in token_logprobs if lp is not None
+                            )
         except Exception:
             pass
 
@@ -139,11 +141,9 @@ class Breakpoints:
         self.store["_last_reasoning_score"] = logprobs_score
         return response, None
 
-    # ─── BP1: after_tool_call ───
     def after_tool_call(self, payload):
         return payload
 
-    # ─── BP5: after_task_call ───
     def after_task_call(self, response):
         if response is not None:
             # Reasoning confidence
@@ -152,7 +152,7 @@ class Breakpoints:
                 reasoning_score = 0.0
             self.store["reasoning_scores"].append(reasoning_score)
 
-            # Answer confidence (только если logprobs доступны)
+            # Answer confidence
             if self._logprobs_available:
                 answer_score = _compute_answer_confidence(response)
             else:
@@ -214,6 +214,5 @@ class Breakpoints:
         self.store = {}
         return best, None
 
-    # ─── BP6: before_tool_call ───
     def before_tool_call(self, response):
         return response

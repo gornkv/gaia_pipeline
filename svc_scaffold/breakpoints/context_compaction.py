@@ -82,6 +82,23 @@ class Breakpoints:
         if not middle_msgs:
             return payload
 
+        # Ensure tail contains at least one user message 
+        tail_has_user = any(
+            isinstance(m, dict) and m.get("role") == "user" for m in tail_msgs
+        )
+        if not tail_has_user:
+            last_user_idx = next(
+                (i for i in range(len(msgs) - 1, -1, -1)
+                 if isinstance(msgs[i], dict) and msgs[i].get("role") == "user"),
+                None,
+            )
+            if last_user_idx is not None and msgs[last_user_idx] not in tail_msgs:
+                tail_msgs = [msgs[last_user_idx]] + tail_msgs
+                middle_msgs = msgs[len(system_msgs) : last_user_idx]
+
+        if not middle_msgs:
+            return payload
+
         chunk_size = max(1, len(middle_msgs) // int(os.getenv("CONTEXT_COMPACTION_CHUNKS", "2")))
         chunks = [middle_msgs[i : i + chunk_size] for i in range(0, len(middle_msgs), chunk_size)]
         summary_texts = await asyncio.gather(
