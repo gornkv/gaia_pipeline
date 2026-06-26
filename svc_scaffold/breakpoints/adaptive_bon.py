@@ -10,6 +10,7 @@ import os
 from typing import Any
 
 import svc_scaffold.openai_helpers as h
+from svc_scaffold.branch_context import BranchContextManager
 
 MAX_K = int(os.getenv("ADAPTIVE_BON_MAX_K", "4"))
 COMPLEXITY_THRESHOLD = int(os.getenv("ADAPTIVE_BON_COMPLEXITY_THRESHOLD", "400"))
@@ -22,6 +23,7 @@ def _complexity(response: dict) -> int:
 class Breakpoints:
     def __init__(self):
         self.store: dict[str, Any] = {}
+        self._ctx = BranchContextManager()
 
     @staticmethod
     def feature_name():
@@ -39,12 +41,14 @@ class Breakpoints:
         return payload
 
     def before_chat_message(self, payload):
-        return payload
+        return self._ctx.before_chat_message(payload)
 
     def after_tool_call(self, payload):
+        self._ctx.after_tool_call(payload)
         return payload
 
     def after_chat_message(self, response):
+        self._ctx.after_chat_message(response)
         return response, None
 
     def after_task_call(self, response):
@@ -60,15 +64,18 @@ class Breakpoints:
 
             if len(self.store["responses"]) < self.store["k"]:
                 print(f"[ADAPTIVE_BON] branching → need {self.store['k']} total", flush=True)
+                self._ctx.start(self.store["branch_payload"])
                 return None, self.store["branch_payload"]
         else:
             if len(self.store["responses"]) < self.store["k"]:
                 print(f"[ADAPTIVE_BON] branching → {len(self.store['responses'])}/{self.store['k']}", flush=True)
+                self._ctx.start(self.store["branch_payload"])
                 return None, self.store["branch_payload"]
 
         candidates = [r for r in self.store["responses"] if r is not None]
         best = max(candidates, key=_complexity) if candidates else response
         print(f"[ADAPTIVE_BON] DONE: picked best of {len(candidates)}, length={_complexity(best)}", flush=True)
+        self._ctx.stop()
         self.store = {}
         return best, None
 

@@ -13,10 +13,12 @@ from typing import Any
 
 import requests
 import svc_scaffold.openai_helpers as h
+from svc_scaffold.branch_context import BranchContextManager
 
 BRANCHES = int(os.getenv("PICSAR_BRANCHES", "6"))
 USE_NORMALIZED = os.getenv("PICSAR_NORMALIZED", "0") == "1"
 BASE_URL = os.environ.get("BASE_MODEL_API_BASE_URL", "http://127.0.0.1:18080/v1")
+BASE_API_KEY = os.environ.get("BASE_MODEL_API_KEY", "")
 
 ANSWER_CONFIDENCE_PROMPT = (
     "Based on the reasoning above, what is the final answer? "
@@ -49,8 +51,10 @@ def _compute_answer_confidence(response: dict) -> float:
     truncated = reasoning[-2000:] if len(reasoning) > 2000 else reasoning
 
     try:
+        headers = {"Authorization": f"Bearer {BASE_API_KEY}"} if BASE_API_KEY else {}
         r = requests.post(
             f"{BASE_URL}/chat/completions",
+            headers=headers,
             json={
                 "messages": [
                     {"role": "user", "content": truncated},
@@ -84,6 +88,7 @@ class Breakpoints:
     def __init__(self):
         self.store: dict[str, Any] = {}
         self._logprobs_available = True
+        self._ctx = BranchContextManager()
 
     @staticmethod
     def feature_name():
@@ -98,6 +103,7 @@ class Breakpoints:
         return payload
 
     def before_chat_message(self, payload):
+        payload = self._ctx.before_chat_message(payload)
         payload = dict(payload)
         payload["logprobs"] = True
         payload["top_logprobs"] = 1
@@ -139,9 +145,11 @@ class Breakpoints:
             self._logprobs_available = False
 
         self.store["_last_reasoning_score"] = logprobs_score
+        self._ctx.after_chat_message(response)
         return response, None
 
     def after_tool_call(self, payload):
+        self._ctx.after_tool_call(payload)
         return payload
 
     def after_task_call(self, response):
@@ -169,6 +177,7 @@ class Breakpoints:
         )
 
         if len(self.store["responses"]) < BRANCHES:
+            self._ctx.start(self.store["branch_payload"])
             return None, self.store["branch_payload"]
 
         responses = [r for r in self.store["responses"] if r is not None]
@@ -211,6 +220,7 @@ class Breakpoints:
             )
             best = responses[best_idx]
 
+        self._ctx.stop()
         self.store = {}
         return best, None
 

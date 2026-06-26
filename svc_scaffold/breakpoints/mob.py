@@ -10,6 +10,7 @@ from typing import Any
 
 import requests
 import svc_scaffold.openai_helpers as h
+from svc_scaffold.branch_context import BranchContextManager
 
 BRANCHES = int(os.getenv("MOB_BRANCHES", "8"))
 BOOTSTRAP = int(os.getenv("MOB_BOOTSTRAP_SAMPLES", "1000"))
@@ -60,6 +61,7 @@ def _reward(response: dict) -> float:
 class Breakpoints:
     def __init__(self):
         self.store: dict[str, Any] = {}
+        self._ctx = BranchContextManager()
 
     @staticmethod
     def feature_name():
@@ -72,12 +74,14 @@ class Breakpoints:
         return payload
 
     def before_chat_message(self, payload):
-        return payload
+        return self._ctx.before_chat_message(payload)
 
     def after_chat_message(self, response):
+        self._ctx.after_chat_message(response)
         return response, None
 
     def after_tool_call(self, payload):
+        self._ctx.after_tool_call(payload)
         return payload
 
     def after_task_call(self, response):
@@ -88,6 +92,7 @@ class Breakpoints:
         print(f"[MOB] branch {branch_num}/{BRANCHES}", flush=True)
 
         if len(self.store["responses"]) < BRANCHES:
+            self._ctx.start(self.store["branch_payload"])
             return None, self.store["branch_payload"]
 
         responses = [r for r in self.store["responses"] if r is not None]
@@ -128,6 +133,7 @@ class Breakpoints:
             responses[0],
         )
 
+        self._ctx.stop()
         self.store = {}
         return best, None
 

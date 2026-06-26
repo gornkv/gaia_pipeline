@@ -10,6 +10,7 @@ from collections import Counter
 from typing import Any
 
 import svc_scaffold.openai_helpers as h
+from svc_scaffold.branch_context import BranchContextManager
 
 BRANCHES = int(os.getenv("RANKED_VOTING_BRANCHES", "5"))
 MODE = os.getenv("RANKED_VOTING_MODE", "bcv")
@@ -67,6 +68,7 @@ def _mrrv(rankings: list[list[str]]) -> str:
 class Breakpoints:
     def __init__(self):
         self.store: dict[str, Any] = {}
+        self._ctx = BranchContextManager()
 
     @staticmethod
     def feature_name():
@@ -79,6 +81,7 @@ class Breakpoints:
         return payload
 
     def before_chat_message(self, payload):
+        payload = self._ctx.before_chat_message(payload)
         msgs = list(h.messages(payload))
         prompt = (
             f"\n\nAfter reasoning, provide the top {NUM_CANDIDATES} most likely answers "
@@ -94,9 +97,11 @@ class Breakpoints:
         return payload
 
     def after_chat_message(self, response):
+        self._ctx.after_chat_message(response)
         return response, None
 
     def after_tool_call(self, payload):
+        self._ctx.after_tool_call(payload)
         return payload
 
     def after_task_call(self, response):
@@ -105,6 +110,7 @@ class Breakpoints:
         branch_num = len(self.store["responses"])
         print(f"[RANKED_VOTING] branch {branch_num}/{BRANCHES}", flush=True)
         if len(self.store["responses"]) < BRANCHES:
+            self._ctx.start(self.store["branch_payload"])
             return None, self.store["branch_payload"]
         rankings = [_extract_ranked(r, NUM_CANDIDATES) for r in self.store["responses"]]
         rankings = [r for r in rankings if r]
@@ -122,6 +128,7 @@ class Breakpoints:
                 (r for r in self.store["responses"] if winner in str(h.message(r).get("content", ""))),
                 self.store["responses"][0],
             )
+        self._ctx.stop()
         self.store = {}
         return best, None
 
