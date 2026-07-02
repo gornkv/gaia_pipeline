@@ -5,3 +5,4 @@ datasets/
 .venv
 playwright-browsers/
 __pycache__/
+env.md
