@@ -8,7 +8,11 @@ set -- eval "${GAIA_TASK}" \
   --sandbox "${GAIA_SANDBOX}" \
   --max-connections "${GAIA_MAX_CONNECTIONS}" \
   -T "split=${GAIA_SPLIT}" \
-  -T "max_attempts=${GAIA_MAX_ATTEMPTS}"
+  -T "max_attempts=${GAIA_MAX_ATTEMPTS}" \
+  -T "code_timeout=${GAIA_TOOL_TIMEOUT}" \
+  -T "time_limit=${GAIA_SAMPLE_TIME_LIMIT}" \
+  --message-limit "${GAIA_MESSAGE_LIMIT}" \
+  --no-fail-on-error
 
 if [ -n "${GAIA_SAMPLE_START:-}" ] && [ -n "${GAIA_SAMPLE_END:-}" ]; then
   set -- "$@" --limit "${GAIA_SAMPLE_START}-${GAIA_SAMPLE_END}"

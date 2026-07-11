@@ -1,40 +1,16 @@
 from __future__ import annotations
 
-import json
+import os
 from typing import Any
 
 import httpx
 
-CTX_LIMIT = 131072
-MAX_TOKENS_OUT = 8192
-# leave headroom for output and special tokens
-MAX_INPUT_CHARS = (CTX_LIMIT - MAX_TOKENS_OUT) * 3
 
-
-def _truncate_messages(messages: list) -> list:
-    """Drop old tool results from the middle when total chars exceed budget."""
-    total = sum(len(json.dumps(m)) for m in messages)
-    if total <= MAX_INPUT_CHARS:
-        return messages
-
-    # Always keep: system (index 0) and last N messages
-    result = []
-    kept_end = []
-    budget = MAX_INPUT_CHARS
-
-    for m in reversed(messages):
-        s = len(json.dumps(m))
-        if budget - s > 0:
-            kept_end.insert(0, m)
-            budget -= s
-        else:
-            break
-
-    # Prepend system message if not already included
-    if messages and messages[0].get("role") == "system" and messages[0] not in kept_end:
-        kept_end.insert(0, messages[0])
-
-    return kept_end
+class ModelClientHTTPError(RuntimeError):
+    def __init__(self, status_code: int, detail: str) -> None:
+        super().__init__(detail)
+        self.status_code = status_code
+        self.detail = detail
 
 
 class OpenAICompatibleModelClient:
@@ -59,32 +35,29 @@ class OpenAICompatibleModelClient:
         request = dict(payload)
         request["model"] = self.model
         request["stream"] = False
-        request.setdefault("max_tokens", MAX_TOKENS_OUT)
 
-        if "messages" in request:
-            request["messages"] = _truncate_messages(request["messages"])
-
-        async with httpx.AsyncClient(timeout=None) as client:
-            response = await client.post(
-                f"{self.base_url}/chat/completions",
-                headers=self.headers(),
-                json=request,
-            )
+        timeout = float(os.getenv("BASE_MODEL_REQUEST_TIMEOUT", "1800"))
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=self.headers(),
+                    json=request,
+                )
+        except httpx.TimeoutException as exc:
+            raise ModelClientHTTPError(
+                504,
+                f"Base model request timed out after {timeout:g} seconds",
+            ) from exc
+        except httpx.RequestError as exc:
+            raise ModelClientHTTPError(502, f"Base model connection failed: {exc}") from exc
 
         try:
             response.raise_for_status()
-        except httpx.HTTPStatusError:
+        except httpx.HTTPStatusError as exc:
             try:
-                err = response.json().get("error", {}).get("message", response.text)[:300]
+                detail = response.json().get("error", {}).get("message", response.text)
             except Exception:
-                err = response.text[:300]
-            return {
-                "choices": [{
-                    "index": 0,
-                    "message": {"role": "assistant", "content": f"Error: {err}"},
-                    "finish_reason": "stop",
-                }],
-                "model": self.model,
-                "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-            }
+                detail = response.text
+            raise ModelClientHTTPError(response.status_code, detail[:4000]) from exc
         return response.json()
