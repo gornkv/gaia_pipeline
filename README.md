@@ -2,6 +2,21 @@
 
 This repository runs the GAIA benchmark through Inspect AI against an OpenAI-compatible model endpoint.
 
+## Run in ssh connect:
+
+```bash
+[ ! -d gaia_pipeline/.git ] && \
+git clone https://github.com/gornkv/gaia_pipeline.git && \
+cd gaia_pipeline && \
+cp .env.example .env && \
+echo 'HF_TOKEN=hf_aaaaaaaaaaaaaaaaa' >> .env && \
+echo 'GAIA_SAMPLE_START=1' >> .env && \
+echo 'GAIA_SAMPLE_END=2' >> .env && \
+sleep 1
+cd ./gaia_pipeline
+git pull
+sh runner/start.sh
+```
 ## Configuration
 
 Create `.env` from the example file and fill in the required credentials:

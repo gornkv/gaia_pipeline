@@ -79,7 +79,7 @@ chmod +x "${LLAMA_SERVER}"
   --host "0.0.0.0" \
   --port "18082" \
   --api-key "${BASE_MODEL_API_KEY}" \
-  --ctx-size "131072" \
+  --ctx-size "262144" \
   --n-gpu-layers "999" \
   --threads "4" \
   --parallel "1" \
