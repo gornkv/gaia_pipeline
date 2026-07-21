@@ -34,29 +34,46 @@ class Breakpoints:
     def before_task_call(self, payload):
         self.store["tool_calls"] = 0
         self.store["prompt_tokens"] = 0
+        self.store["completion_tokens"] = 0
         self.store["last_tool_result_tokens"] = 0
         return payload
 
     def before_chat_message(self, payload):
+        msgs = list(h.messages(payload))
+        last_tool_idx = None
+        for i in range(len(msgs) - 1, -1, -1):
+            if isinstance(msgs[i], dict) and msgs[i].get("role") in {"tool", "function"}:
+                last_tool_idx = i
+                break
+            if isinstance(msgs[i], dict) and msgs[i].get("role") != "system":
+                break
+        if last_tool_idx is None:
+            return payload
+
         tool_calls = self.store.get("tool_calls", 0)
-        prompt_tokens = self.store.get("prompt_tokens", 0)
+        context = (
+            self.store.get("prompt_tokens", 0)
+            + self.store.get("completion_tokens", 0)
+            + self.store.get("last_tool_result_tokens", 0)
+        )
         last_tool_result_tokens = self.store.get("last_tool_result_tokens", 0)
         status = (
             "[Budget status: "
             f"tool calls used: {tool_calls}; "
             f"tool calls remaining: {max(TOOL_LIMIT - tool_calls, 0)}; "
-            f"context used: {prompt_tokens} tokens; "
-            f"context remaining: {max(CTX_LIMIT - prompt_tokens, 0)} tokens"
+            f"context used: {context} tokens; "
+            f"context remaining: {max(CTX_LIMIT - context, 0)} tokens"
         )
         if last_tool_result_tokens:
-            status += f"; last tool result added about {last_tool_result_tokens} tokens"
+            status += f"; this tool result about {last_tool_result_tokens} tokens"
         status += ".]"
-        print(f"[BUDGET_TRACKER] injecting transient status: {status}", flush=True)
+        print(f"[BUDGET_TRACKER] appending transient status to tool result: {status}", flush=True)
 
         payload = dict(payload)
-        payload["messages"] = list(h.messages(payload)) + [
-            {"role": "system", "content": status}
-        ]
+        tool_msg = dict(msgs[last_tool_idx])
+        tool_msg["content"] = f"{_content_text(tool_msg.get('content'))}\n{status}".strip()
+        msgs[last_tool_idx] = tool_msg
+        payload["messages"] = msgs
         return payload
 
     def after_chat_message(self, response):
@@ -65,8 +82,13 @@ class Breakpoints:
             pt = usage.get("prompt_tokens")
             if pt is None:
                 pt = usage.get("input_tokens")
-            if pt is not None:
+            if isinstance(pt, int):
                 self.store["prompt_tokens"] = pt
+            ct = usage.get("completion_tokens")
+            if ct is None:
+                ct = usage.get("output_tokens")
+            if isinstance(ct, int):
+                self.store["completion_tokens"] = ct
         return response, None
 
     def after_tool_call(self, payload):
