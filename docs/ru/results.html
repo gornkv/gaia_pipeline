@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Полученные результаты Scaling Laws</title>
+  <meta name="description" content="Документация Scaling Laws: Test-Time Scaling Proxy, GAIA Experiment Launcher и результаты benchmark-экспериментов.">
+  <link rel="icon" href="../assets/favicon-sl.svg?v=20260721-sl" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/style.css?v=20260721-sl">
+</head>
+<body>
+  <nav class="nav" aria-label="Основная навигация">
+    <div class="nav-inner">
+      <a class="brand" href="index.html" aria-label="Scaling Laws">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>Scaling Laws</span>
+      </a>
+      <div class="links">
+          <a href="index.html">Оглавление</a>
+          <a href="overview.html">About</a>
+          <a href="results.html" aria-current="page">Результаты</a>
+          <a href="architecture.html">Документация</a>
+      </div>
+    </div>
+  </nav>
+  <main>
+  <section class="hero single">
+    <div>
+      <div class="eyebrow"><span class="pulse"></span> Project Results</div>
+      <h1>Полученные результаты</h1>
+      <p class="lead">Главный сигнал уже виден: часть test-time техник дает прирост качества, но выигрыш нужно смотреть вместе со временем, токенами и устойчивостью запуска.</p>
+    </div>
+  </section>
+  <div class="doc-layout">
+    <aside class="side-toc" aria-label="Оглавление раздела">
+      <strong>На этой странице</strong>
+      <a href="#summary">Сводка</a>
+      <a href="#baseline">Базовый запуск</a>
+      <a href="#compare">Сравнение техник</a>
+      <a href="#cost">Стоимость</a>
+      <a href="#usage">Реальное потребление</a>
+      <a href="#budget-tracker">Budget Tracker</a>
+      <a href="#work">Проделанная работа</a>
+      <a href="#schemes">Схемы и таблицы</a>
+      <a href="#limits">Ограничения</a>
+      <a href="#notes">Выводы</a>
+    </aside>
+    <article class="doc">
+      <section id="summary">
+        <h2>Сводка результатов</h2>
+        <p>Эксперимент проверяет, можно ли улучшить поведение агента на GAIA за счёт дополнительного compute на этапе inference: Best-of-N, голосование, judge/верификация, управление контекстом и budget-aware техники. Текущий setup: GAIA Level 1, 53 задания, небольшая модель Qwen 3.5 9B и запуск через инфраструктуру проекта.</p>
+        <div class="result-grid">
+          <div class="result-card"><strong>0.453</strong><span>Baseline accuracy на всех 53 задачах GAIA Level 1.</span></div>
+          <div class="result-card"><strong>4.5 min</strong><span>Среднее время baseline на одну задачу.</span></div>
+          <div class="result-card"><strong>509k</strong><span>Средний token usage baseline на одну задачу.</span></div>
+          <div class="result-card"><strong>+0.14</strong><span>Лучший прирост accuracy: BUDGET_TRACKER.</span></div>
+          <div class="result-card"><strong>+0.10</strong><span>Второй результат: VOI / inference-time budget control.</span></div>
+          <div class="result-card"><strong>+0.06</strong><span>STRUCTURED_NOTES улучшает accuracy и одновременно снижает cost.</span></div>
+        </div>
+      </section>
+      <section id="baseline">
+        <h2>Baseline</h2>
+        <p>Baseline был посчитан на всех 53 задачах GAIA Level 1. Средняя точность составила 0.453, среднее время выполнения — 4.5 минуты на задачу, среднее потребление — 509k токенов на задачу.</p>
+        <figure class="figure">
+          <img src="../assets/results/baseline-all-53-tasks.png" alt="Baseline на 53 задачах: accuracy, time и token usage per task">
+          <figcaption class="figure-caption">Baseline по всем 53 задачам: correctness, время и token usage. Пунктирные линии показывают средние значения.</figcaption>
+        </figure>
+      </section>
+      <section id="compare">
+        <h2>Сравнение техник</h2>
+        <p>Сравнение показывает, что не все test-time техники дают одинаковый эффект. Лучшие приросты accuracy дали BUDGET_TRACKER, VOI, HIAGENT, STRUCTURED_NOTES и BAVT. Нейтральными оказались SHORT_MAK и ACON. Часть техник снизила accuracy относительно baseline: ADAPTIVE_BON, CONTEXT_COMPACTION, SELF_CONSISTENCY, RESUM и RANKED_VOTING.</p>
+        <table class="data-table">
+          <thead>
+            <tr><th>Техника</th><th>Доступные задачи</th><th>Delta accuracy vs baseline</th><th>Наблюдение</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>BUDGET_TRACKER</td><td>36</td><td>+0.14</td><td>Лучший прирост accuracy среди проверенных техник.</td></tr>
+            <tr><td>VOI</td><td>39</td><td>+0.10</td><td>Сильный прирост, но с заметным time overhead.</td></tr>
+            <tr><td>HIAGENT</td><td>53</td><td>+0.08</td><td>Положительный эффект на полном наборе задач.</td></tr>
+            <tr><td>STRUCTURED_NOTES</td><td>52</td><td>+0.06</td><td>Улучшает accuracy при снижении среднего времени и почти baseline token usage.</td></tr>
+            <tr><td>BAVT</td><td>38</td><td>+0.03</td><td>Небольшой прирост при дополнительной стоимости.</td></tr>
+            <tr><td>SHORT_MAK, ACON</td><td>39</td><td>+0.00</td><td>Нейтральный эффект по accuracy.</td></tr>
+            <tr><td>ADAPTIVE_BON, CONTEXT_COMPACTION, SELF_CONSISTENCY, RESUM, RANKED_VOTING</td><td>29-53</td><td>от -0.03 до -0.13</td><td>В текущей конфигурации ухудшили accuracy.</td></tr>
+          </tbody>
+        </table>
+        <figure class="figure">
+          <img src="../assets/results/feature-vs-baseline-accuracy.png" alt="Feature vs baseline accuracy">
+          <figcaption class="figure-caption">Feature vs baseline accuracy: зелёные полосы — улучшение, красные — ухудшение, серые — нейтральный эффект.</figcaption>
+        </figure>
+      </section>
+      <section id="cost">
+        <h2>Стоимость</h2>
+        <p>Стоимость сравнивалась по двум осям: время на задачу и token usage. Baseline mean: 4.5 минуты и 509k токенов на задачу. По среднему времени дешевле baseline оказались ACON, SHORT_MAK, HIAGENT и STRUCTURED_NOTES. По токенам ниже baseline оказались RESUM и VOI, а STRUCTURED_NOTES осталась практически на уровне baseline.</p>
+        <figure class="figure">
+          <img src="../assets/results/cost-distribution-per-feature.png" alt="Cost distribution per feature across all tasks">
+          <figcaption class="figure-caption">Распределение времени и токенов по техникам. Пунктирная красная линия — baseline mean.</figcaption>
+        </figure>
+        <figure class="figure">
+          <img src="../assets/results/cost-per-feature.png" alt="Cost per feature: mean time and mean token usage">
+          <figcaption class="figure-caption">Средняя стоимость техник: time per task и token usage per task относительно baseline.</figcaption>
+        </figure>
+      </section>
+      <section id="usage">
+        <h2>Реальное потребление</h2>
+        <p>Квадрант эффективности показывает trade-off между accuracy delta и overhead. STRUCTURED_NOTES выглядит как наиболее удачная lightweight-техника: она даёт положительный прирост accuracy и при этом не требует дополнительного token/time budget относительно baseline. HIAGENT также даёт прирост при низком overhead. BUDGET_TRACKER даёт максимальный прирост, но требует дополнительного compute.</p>
+        <figure class="figure">
+          <img src="../assets/results/feature-efficiency-quadrant.png" alt="Feature efficiency quadrant">
+          <figcaption class="figure-caption">Feature Efficiency Quadrant: accuracy gain vs token/time overhead. Зелёные точки — техники с улучшением accuracy.</figcaption>
+        </figure>
+      </section>
+      <section id="budget-tracker">
+        <h2>Budget Tracker</h2>
+        <p>Отдельный график показывает метрики BUDGET_TRACKER: success per task, cumulative tokens, max effective input tokens, долю context window и рабочее время. Во втором и третьем графиках пунктирные линии отмечают context window используемой модели: baseline 256k и BUDGET_TRACKER 128k.</p>
+        <figure class="figure">
+          <img src="../assets/results/budget-tracker-token-budget-success.png" alt="Budget tracker: token budget vs success">
+          <figcaption class="figure-caption">BUDGET_TRACKER: token budget vs success, cumulative tokens, effective input, context ratio и working time.</figcaption>
+        </figure>
+      </section>
+      <section id="work">
+        <h2>Проделанная работа</h2>
+        <p>Для локального запуска был собран отдельный файл <code>localModel.sh</code>. Были добавлены ограничения на количество использования tool и время работы tool, потому что Qwen использовал очень много вызовов. Интерактивный <code>sudo</code> внутри tool calls был запрещён.</p>
+        <p>Отдельно зафиксированы операционные риски: зависающие tool/python-процессы, избыточное количество tool calls и нестабильность отдельных InspectAI tools при высоком потреблении памяти.</p>
+      </section>
+      <section id="schemes">
+        <h2>Схемы и таблицы техник</h2>
+        <p>Ниже собраны схемы hook-based интерфейса и таблицы техник. Они связывают полученные результаты с архитектурой proxy и выбором feature-кандидатов.</p>
+        <figure class="figure narrow">
+          <img src="../assets/results/technique-interface.png" alt="Technique interface code example">
+          <figcaption class="figure-caption">Одна техника реализуется как отдельный класс с lifecycle hooks.</figcaption>
+        </figure>
+        <figure class="figure narrow">
+          <img src="../assets/results/benchmark-hook-points.png" alt="Benchmark hook points scheme">
+          <figcaption class="figure-caption">Benchmark hook points: before generate, after tool call, after tool result и after final answer.</figcaption>
+        </figure>
+        <figure class="figure narrow">
+          <img src="../assets/results/technique-literature-roles.png" alt="Technique literature roles table">
+          <figcaption class="figure-caption">Таблица роллаутов и context-window техник из литературного обзора.</figcaption>
+        </figure>
+        <figure class="figure narrow">
+          <img src="../assets/results/budget-techniques-table.png" alt="Budget techniques table">
+          <figcaption class="figure-caption">Таблица техник для бюджета инструментов, токенов и ресурсов.</figcaption>
+        </figure>
+      </section>
+      <section id="limits">
+        <h2>Ограничения</h2>
+        <ul>
+          <li>Недостаточно вычислительных мощностей.</li>
+          <li>Проверялись простые задачи GAIA Level 1.</li>
+          <li>Использовалась маленькая единственная модель Qwen 3.5 9B.</li>
+          <li>Несмотря на широту задач, рассматривается один датасет.</li>
+          <li>Статистическая значимость без Level 2 остаётся неясной.</li>
+        </ul>
+      </section>
+      <section id="notes">
+        <h2>Выводы</h2>
+        <p>Подбор техник может дать прирост точности на benchmark loop. Это означает, что реальные оценки scaling laws для агентного inference могут быть систематически занижены относительно таймлайнов: если оценивать только наивное масштабирование, можно недооценить будущие возможности моделей.</p>
+        <ul>
+          <li>BUDGET_TRACKER показал максимальный прирост accuracy: +0.14.</li>
+          <li>VOI дал +0.10 accuracy, но требует аккуратного учёта time overhead.</li>
+          <li>STRUCTURED_NOTES выглядит особенно практично: +0.06 accuracy при снижении среднего времени и token usage около baseline.</li>
+          <li>Наивные техники вроде SELF_CONSISTENCY и RANKED_VOTING в текущем setup могут ухудшать результат.</li>
+          <li>Дальше планируется проверять комбинации техник, подготовить пост на LessWrong и выделить инфраструктуру в reusable/open-source компоненты: <code>gaia-experiment-launcher</code> и <code>tts-proxy-framework</code>.</li>
+        </ul>
+      </section>
+    </article>
+  </div>
+</main>
+
+  <script src="../assets/site.js"></script>
+</body>
+</html>

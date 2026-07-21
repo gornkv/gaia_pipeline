@@ -1,113 +1,111 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Оглавление Scaling Laws</title>
-  <meta name="description" content="Документация Scaling Laws: Test-Time Scaling Proxy, GAIA Experiment Launcher и результаты benchmark-экспериментов.">
+  <title>Overview Scaling Laws</title>
+  <meta name="description" content="Scaling Laws documentation: Test-Time Scaling Proxy, GAIA Experiment Launcher, and benchmark experiment results.">
   <link rel="icon" href="assets/favicon-sl.svg?v=20260721-sl" type="image/svg+xml">
   <link rel="stylesheet" href="assets/style.css?v=20260721-sl">
 </head>
 <body>
-  <nav class="nav" aria-label="Основная навигация">
+  <nav class="nav" aria-label="Main navigation">
     <div class="nav-inner">
       <a class="brand" href="index.html" aria-label="Scaling Laws">
         <span class="brand-mark" aria-hidden="true"></span>
         <span>Scaling Laws</span>
       </a>
       <div class="links">
-          <a href="index.html" aria-current="page">Оглавление</a>
-          <a href="overview.html">About</a>
-          <a href="results.html">Результаты</a>
-          <a href="architecture.html">Документация</a>
+        <a href="index.html" aria-current="page">Overview</a>
+        <a href="overview.html">About</a>
+        <a href="results.html">Results</a>
+        <a href="architecture.html">Documentation</a>
       </div>
     </div>
   </nav>
   <main>
-  <section class="hero">
-    <div>
-      <div class="eyebrow"><span class="pulse"></span> Главная</div>
-      <h1>Scaling Laws</h1>
-      <p class="lead">Проект собирает в один reproducible loop три вещи: идею эксперимента, уже полученные результаты и технический слой, который позволяет повторять запуски на разном compute.</p>
-      <div class="hero-actions">
-        <a class="button" href="overview.html">Начать с общей цели</a>
-        <a class="button secondary" href="results.html">Раздел результатов</a>
+    <section class="hero">
+      <div>
+        <div class="eyebrow"><span class="pulse"></span> Home</div>
+        <h1>Scaling Laws</h1>
+        <p class="lead">The project brings three things into one reproducible loop: the experiment idea, the results already measured, and the technical layer for rerunning experiments across heterogeneous compute.</p>
+        <div class="hero-actions">
+          <a class="button" href="overview.html">Open About</a>
+          <a class="button secondary" href="results.html">Open Results</a>
+        </div>
       </div>
-    </div>
-    <div class="terminal" aria-label="Схема проекта">
-      <div class="terminal-head"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
-      <pre><span class="dim"># practical pipeline</span>
+      <div class="terminal" aria-label="Project pipeline">
+        <div class="terminal-head"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+        <pre><span class="dim"># practical pipeline</span>
 GAIA Benchmark
   -> InspectAI GAIA runner
   -> Test-Time Scaling Proxy
   -> OpenAI-compatible model backend
   -> Local / Colab / Mac / GPU inference</pre>
-    </div>
-  </section>
-
-  <section class="section alt">
-    <div class="container">
-      <div class="section-head">
-        <h2>Разделы проекта</h2>
-        <p>Начните с общей картины, затем посмотрите результаты, а если нужно повторить или развить эксперимент, переходите к технической части.</p>
       </div>
-      <div class="toc">
-<article class="toc-card">
-  <span class="tag">About</span>
-  <h3><a href="overview.html">About проекта</a></h3>
-  <p>Benchmark становится стабильной лабораторией: техники можно менять и сравнивать, не переписывая runner и не привязываясь к одному backend.</p>
-</article>
+    </section>
 
-<article class="toc-card">
-  <span class="tag">Project Results</span>
-  <h3><a href="results.html">Полученные результаты</a></h3>
-  <p>Главный сигнал уже виден: часть test-time техник дает прирост качества, но выигрыш нужно смотреть вместе со временем, токенами и устойчивостью запуска.</p>
-</article>
+    <section class="section alt">
+      <div class="container">
+        <div class="section-head">
+          <h2>Project Sections</h2>
+          <p>Start with the big picture, then check the results, and move to the technical section when you want to reproduce or extend the experiment.</p>
+        </div>
+        <div class="toc">
+          <article class="toc-card">
+            <span class="tag">About</span>
+            <h3><a href="overview.html">About the project</a></h3>
+            <p>The benchmark becomes a stable lab: techniques can change and be compared without rewriting the runner or binding the system to one backend.</p>
+          </article>
 
-<article class="toc-card">
-  <span class="tag blue">Technical documentation</span>
-  <h3><a href="architecture.html">Proxy micro framework и runner infrastructure</a></h3>
-  <p>Архитектура разделяет исследовательскую логику и инфраструктуру запуска, поэтому новую технику можно подключить как модуль и воспроизвести на разном compute.</p>
-</article>
+          <article class="toc-card">
+            <span class="tag">Project Results</span>
+            <h3><a href="results.html">Experiment Results</a></h3>
+            <p>The main signal is already visible: some test-time techniques improve quality, but the gain has to be read together with time, tokens, and run stability.</p>
+          </article>
 
+          <article class="toc-card">
+            <span class="tag blue">Technical documentation</span>
+            <h3><a href="architecture.html">Proxy micro framework and runner infrastructure</a></h3>
+            <p>The architecture separates research logic from run infrastructure, so a new technique can be plugged in as a module and reproduced across heterogeneous compute.</p>
+          </article>
+        </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <section class="section">
-    <div class="container">
-      <div class="section-head">
-        <h2>Результаты</h2>
-        <p>Эти два графика дают быстрый срез: как выглядит базовый уровень на полном наборе задач и во сколько обходятся разные техники.</p>
+    <section class="section">
+      <div class="container">
+        <div class="section-head">
+          <h2>Results</h2>
+          <p>These two charts give a quick read: what the baseline looks like across the full task set, and how expensive different techniques are.</p>
+        </div>
+        <div class="result-strip">
+          <figure class="figure">
+            <img src="assets/results/baseline-all-53-tasks.png" alt="Baseline on 53 tasks: accuracy, time, and token usage per task">
+            <figcaption class="figure-caption">Baseline over all 53 GAIA Level 1 tasks: correctness, time, and token usage. Dashed lines show mean values.</figcaption>
+          </figure>
+          <figure class="figure">
+            <img src="assets/results/cost-distribution-per-feature.png" alt="Cost distribution per feature across all tasks">
+            <figcaption class="figure-caption">Time and token distributions per technique. The red dashed line shows the baseline mean.</figcaption>
+          </figure>
+        </div>
       </div>
-      <div class="result-strip">
-        <figure class="figure">
-          <img src="assets/results/baseline-all-53-tasks.png" alt="Baseline на 53 задачах: accuracy, time и token usage per task">
-          <figcaption class="figure-caption">Baseline по всем 53 задачам GAIA Level 1: correctness, время и token usage. Пунктирные линии показывают средние значения.</figcaption>
-        </figure>
-        <figure class="figure">
-          <img src="assets/results/cost-distribution-per-feature.png" alt="Cost distribution per feature across all tasks">
-          <figcaption class="figure-caption">Распределение времени и токенов по техникам. Пунктирная красная линия показывает baseline mean.</figcaption>
-        </figure>
-      </div>
-    </div>
-  </section>
+    </section>
 
-  <section class="section">
-    <div class="container">
-      <div class="section-head">
-        <h2>Быстрые ссылки</h2>
-        <p>Короткие переходы к местам, которые чаще всего нужны при обсуждении архитектуры, настройке запуска и сверке выводов.</p>
+    <section class="section">
+      <div class="container">
+        <div class="section-head">
+          <h2>Quick Links</h2>
+          <p>Shortcuts to the places that usually matter first when discussing architecture, configuring a run, or checking the conclusions.</p>
+        </div>
+        <div class="grid three">
+          <article class="card"><span class="tag blue">Architecture</span><h3><a href="overview.html#practical-stack">Practical stack</a></h3><p>GAIA, InspectAI, proxy, and OpenAI-compatible backend in one benchmark loop.</p></article>
+          <article class="card"><span class="tag gold">Config</span><h3><a href="architecture.html#launcher-env">Configuration through env</a></h3><p>Backend runner, HF token, GAIA task, split, and feature flags.</p></article>
+          <article class="card"><span class="tag">Results</span><h3><a href="results.html">Experiment results</a></h3><p>Baseline run, technique comparison, cost charts, efficiency graphs, and conclusions.</p></article>
+        </div>
       </div>
-      <div class="grid three">
-        <article class="card"><span class="tag blue">Architecture</span><h3><a href="overview.html#практическая-связка">Практическая связка</a></h3><p>GAIA, InspectAI, proxy и OpenAI-compatible backend в одном benchmark loop.</p></article>
-        <article class="card"><span class="tag gold">Config</span><h3><a href="launcher.html#конфигурация-через-env">Конфигурация через env</a></h3><p>Backend runner, HF token, GAIA task, split и feature flags.</p></article>
-        <article class="card"><span class="tag gold">Results</span><h3><a href="results.html">Полученные результаты</a></h3><p>Базовый запуск, сравнение техник, стоимость запусков, графики эффективности и выводы.</p></article>
-      </div>
-    </div>
-  </section>
-</main>
-
+    </section>
+  </main>
   <script src="assets/site.js"></script>
 </body>
 </html>

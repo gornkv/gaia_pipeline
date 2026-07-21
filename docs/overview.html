@@ -1,105 +1,97 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Общая цель проекта для benchmark loop экспериментов с LLM behavior Scaling Laws</title>
-  <meta name="description" content="Документация Scaling Laws: Test-Time Scaling Proxy, GAIA Experiment Launcher и результаты benchmark-экспериментов.">
+  <title>About Scaling Laws</title>
+  <meta name="description" content="Overall Scaling Laws architecture for LLM behavior experiments in a benchmark loop.">
   <link rel="icon" href="assets/favicon-sl.svg?v=20260721-sl" type="image/svg+xml">
   <link rel="stylesheet" href="assets/style.css?v=20260721-sl">
 </head>
 <body>
-  <nav class="nav" aria-label="Основная навигация">
+  <nav class="nav" aria-label="Main navigation">
     <div class="nav-inner">
-      <a class="brand" href="index.html" aria-label="Scaling Laws">
-        <span class="brand-mark" aria-hidden="true"></span>
-        <span>Scaling Laws</span>
-      </a>
+      <a class="brand" href="index.html" aria-label="Scaling Laws"><span class="brand-mark" aria-hidden="true"></span><span>Scaling Laws</span></a>
       <div class="links">
-          <a href="index.html">Оглавление</a>
-          <a href="overview.html" aria-current="page">About</a>
-          <a href="results.html">Результаты</a>
-          <a href="architecture.html">Документация</a>
+        <a href="index.html">Overview</a>
+        <a href="overview.html" aria-current="page">About</a>
+        <a href="results.html">Results</a>
+        <a href="architecture.html">Documentation</a>
       </div>
     </div>
   </nav>
   <main>
-  <section class="hero single">
-    <div>
-      <div class="eyebrow"><span class="pulse"></span> About</div>
-      <h1>About проекта</h1>
-      <p class="lead">Benchmark становится стабильной лабораторией: техники можно менять и сравнивать, не переписывая runner и не привязываясь к одному backend.</p>
-    </div>
-  </section>
-  <div class="doc-layout">
-    <aside class="side-toc" aria-label="Оглавление раздела">
-      <strong>На этой странице</strong>
-      <a href="#кратко">Кратко</a>
-        <a href="#главная-идея">Главная идея</a>
-        <a href="#почему-не-менять-сам-benchmark">Почему не менять сам benchmark</a>
-        <a href="#практическая-связка">Практическая связка</a>
-        <a href="#что-именно-исследуется">Что именно исследуется</a>
+    <section class="hero single">
+      <div>
+        <div class="eyebrow"><span class="pulse"></span> About</div>
+        <h1>About the project</h1>
+        <p class="lead">The benchmark becomes a stable lab: techniques can change and be compared without rewriting the runner or binding the system to one backend.</p>
+      </div>
+    </section>
+    <div class="doc-layout">
+      <aside class="side-toc" aria-label="Page table of contents">
+        <strong>On this page</strong>
+        <a href="#short">Short version</a>
+        <a href="#main-idea">Main idea</a>
+        <a href="#why-not-change-benchmark">Why not change the benchmark</a>
+        <a href="#practical-stack">Practical stack</a>
+        <a href="#research-directions">Research directions</a>
         <a href="#test-time-scaling">Test time scaling</a>
         <a href="#context-optimization">Context optimization</a>
-        <a href="#почему-маленькие-модели-важны">Почему маленькие модели важны</a>
-        <a href="#разнородный-compute-как-часть-задачи">Разнородный compute как часть задачи</a>
-        <a href="#модульность-проекта">Модульность проекта</a>
-        <a href="#что-считается-результатом-проекта">Что считается результатом проекта</a>
-        <a href="#как-выглядит-типовой-эксперимент">Как выглядит типовой эксперимент</a>
-        <a href="#пример-конфигурации">Пример конфигурации</a>
-        <a href="#для-кого-проект">Для кого проект</a>
-        <a href="#ограничения">Ограничения</a>
-        <a href="#итог">Итог</a>
-    </aside>
-    <article class="doc">
-      <section id="кратко"><h2>Кратко</h2>
-<p>Проект создаёт инфраструктуру для экспериментов с поведением языковых моделей в benchmark loop. Основной практический сценарий — GAIA Benchmark через InspectAI, но архитектура не привязана жёстко только к GAIA.</p>
-<p>Проект состоит из двух больших частей:</p>
-<pre><code class="language-text">1. Test-Time Scaling Proxy
+        <a href="#small-models">Why small models matter</a>
+        <a href="#heterogeneous-compute">Heterogeneous compute</a>
+        <a href="#modularity">Project modularity</a>
+        <a href="#project-output">Project output</a>
+        <a href="#workflow">Typical experiment</a>
+        <a href="#configuration">Configuration example</a>
+        <a href="#audience">Audience</a>
+        <a href="#limitations">Limitations</a>
+        <a href="#summary">Summary</a>
+      </aside>
+      <article class="doc">
+        <section id="short"><h2>Short version</h2>
+          <p>The project builds infrastructure for experimenting with language-model behavior inside a benchmark loop. The main practical target is GAIA through InspectAI, but the architecture is not tightly coupled to GAIA.</p>
+          <p>The project has two major parts:</p>
+          <pre><code class="language-text">1. Test-Time Scaling Proxy
 2. GAIA Experiment Launcher</code></pre>
-<p>Первая часть отвечает за подключение experimental techniques поверх OpenAI-compatible модели.</p>
-<p>Вторая часть отвечает за воспроизводимый запуск полного pipeline на разных inference backend’ах и в разных вычислительных средах.</p>
-</section>
-<section id="главная-идея"><h2>Главная идея</h2>
-<p>Цель проекта — сделать benchmark-эксперименты с LLM более быстрыми, модульными и воспроизводимыми.</p>
-<p>Вместо того чтобы каждый раз менять benchmark runner или писать отдельный pipeline под каждую технику, проект вводит промежуточный слой:</p>
-<pre><code class="language-text">Benchmark runner → Proxy with techniques → Base model backend</code></pre>
-<p>Этот слой позволяет экспериментировать с поведением модели на этапе выполнения benchmark’а:</p>
-<ul>
-<li>менять prompt;</li>
-<li>менять request;</li>
-<li>анализировать response;</li>
-<li>запускать дополнительные model calls;</li>
-<li>агрегировать ответы;</li>
-<li>включать Best-of-N;</li>
-<li>сохранять промежуточное состояние;</li>
-<li>сжимать контекст;</li>
-<li>отслеживать tool calls;</li>
-<li>собирать usage;</li>
-<li>комбинировать несколько техник;</li>
-<li>сохранять конфигурацию запуска.</li>
-</ul>
-</section>
-<section id="почему-не-менять-сам-benchmark"><h2>Почему не менять сам benchmark</h2>
-<p>Benchmark runner должен оставаться максимально чистым.</p>
-<p>Если каждая техника будет встраиваться прямо в benchmark code, появятся проблемы:</p>
-<ul>
-<li>benchmark станет сложнее поддерживать;</li>
-<li>техники будут зависеть от конкретной реализации benchmark’а;</li>
-<li>будет трудно сравнивать техники между собой;</li>
-<li>будет трудно отключать одну технику и включать другую;</li>
-<li>будет трудно переносить подход на другой benchmark;</li>
-<li>будет трудно воспроизводить результаты;</li>
-<li>код экспериментов смешается с кодом scoring и task execution.</li>
-</ul>
-<p>Поэтому проект выносит экспериментальную логику в proxy layer.</p>
-<p>Benchmark продолжает делать то, что должен делать benchmark: запускать задачи и оценивать ответы.</p>
-<p>Proxy делает то, что нужно для экспериментов: вмешивается в model/tool/task lifecycle и реализует техники.</p>
-<p>Backend делает то, что должен делать backend: запускает модель и отдаёт ответы.</p>
-</section>
-<section id="практическая-связка"><h2>Практическая связка</h2>
-<p>Текущая практическая связка проекта:</p>
-<pre><code class="language-text">GAIA Benchmark
+          <p>The proxy adds experimental techniques on top of an OpenAI-compatible model. The launcher makes the full pipeline reproducible across different inference backends and compute environments.</p>
+        </section>
+        <section id="main-idea"><h2>Main idea</h2>
+          <p>The goal is to make LLM benchmark experiments faster, more modular, and reproducible. Instead of modifying the benchmark runner for every technique, the project introduces an intermediate layer:</p>
+          <pre><code class="language-text">Benchmark runner -> Proxy with techniques -> Base model backend</code></pre>
+          <p>This layer makes it possible to experiment with model behavior during benchmark execution:</p>
+          <ul>
+            <li>change the prompt;</li>
+            <li>change the request;</li>
+            <li>analyze the response;</li>
+            <li>run additional model calls;</li>
+            <li>aggregate answers;</li>
+            <li>enable Best-of-N;</li>
+            <li>save intermediate state;</li>
+            <li>compact context;</li>
+            <li>track tool calls;</li>
+            <li>collect usage;</li>
+            <li>combine several techniques;</li>
+            <li>preserve run configuration.</li>
+          </ul>
+        </section>
+        <section id="why-not-change-benchmark"><h2>Why not change the benchmark</h2>
+          <p>The benchmark runner should stay clean.</p>
+          <p>If every technique is embedded directly into benchmark code, several problems appear:</p>
+          <ul>
+            <li>the benchmark becomes harder to maintain;</li>
+            <li>techniques become tied to a specific benchmark implementation;</li>
+            <li>techniques become harder to compare;</li>
+            <li>turning one technique off and another on becomes harder;</li>
+            <li>the approach becomes harder to transfer to another benchmark;</li>
+            <li>results become harder to reproduce;</li>
+            <li>experiment code gets mixed with scoring and task execution.</li>
+          </ul>
+          <p>That is why the project moves experimental logic into the proxy layer.</p>
+          <p>The proxy owns experimental logic. The benchmark runs tasks and scores answers. The backend loads the model and serves responses.</p>
+        </section>
+        <section id="practical-stack"><h2>Practical stack</h2>
+          <pre><code class="language-text">GAIA Benchmark
         ↓
 InspectAI GAIA runner
         ↓
@@ -108,219 +100,203 @@ Test-Time Scaling Proxy
 OpenAI-compatible model backend
         ↓
 Local / Colab / Mac / GPU inference</code></pre>
-<p>Для InspectAI proxy выглядит как обычная модель. Для proxy базовая модель выглядит как обычный OpenAI-compatible endpoint.</p>
-<p>Таким образом, обе стороны остаются простыми:</p>
-<ul>
-<li>benchmark не знает о техниках;</li>
-<li>base model backend не знает о benchmark’е;</li>
-<li>proxy связывает их и добавляет experimental logic.</li>
-</ul>
-</section>
-<section id="что-именно-исследуется"><h2>Что именно исследуется</h2>
-<p>Проект предназначен для исследования test-time техник, которые меняют поведение модели не через обучение, а через организацию инференса.</p>
-<p>Примеры направлений:</p>
-<ul>
-<li>Best-of-N;</li>
-<li>self-consistency;</li>
-<li>adaptive sampling;</li>
-<li>ranked voting;</li>
-<li>context compaction;</li>
-<li>structured notes;</li>
-<li>budget-aware reasoning;</li>
-<li>tool-result summarization;</li>
-<li>branch isolation;</li>
-<li>final answer selection;</li>
-<li>intermediate state tracking.</li>
-</ul>
-<p>Общая идея: не менять веса модели, а улучшать её работу за счёт того, как она вызывается, как хранится контекст, как обрабатываются промежуточные результаты и как выбирается финальный ответ.</p>
-</section>
-<section id="test-time-scaling"><h2>Test time scaling</h2>
-<p>Test-time scaling — это класс подходов, где качество ответа пытаются повысить за счёт дополнительных вычислений во время инференса.</p>
-<p>Простейший пример — сделать несколько попыток и выбрать лучшую.</p>
-<p>Более сложные варианты:</p>
-<ul>
-<li>запустить несколько независимых веток рассуждения;</li>
-<li>заставить модель проверить собственный ответ;</li>
-<li>использовать голосование;</li>
-<li>оценить сложность задачи и адаптивно выбрать compute budget;</li>
-<li>сохранить промежуточные выводы;</li>
-<li>использовать дополнительные model calls только для сложных задач.</li>
-</ul>
-<p>Проект не ограничивается строгим определением test-time scaling. В нём также важны context-saving техники, потому что в реальных условиях compute ограничен, а модели могут быть небольшими.</p>
-</section>
-<section id="context-optimization"><h2>Context optimization</h2>
-<p>Context optimization — важная часть проекта.</p>
-<p>В GAIA-подобных задачах история может быстро расти:</p>
-<ul>
-<li>system prompt;</li>
-<li>user task;</li>
-<li>assistant reasoning;</li>
-<li>tool calls;</li>
-<li>tool results;</li>
-<li>промежуточные наблюдения;</li>
-<li>повторные попытки;</li>
-<li>branch histories.</li>
-</ul>
-<p>Для моделей с небольшим context window это становится bottleneck’ом. Даже если модель потенциально может решить задачу, она может потерять важную информацию, переполнить контекст или начать хуже работать на длинной истории.</p>
-<p>Поэтому проект поддерживает техники, которые:</p>
-<ul>
-<li>сжимают длинные tool results;</li>
-<li>выделяют факты;</li>
-<li>сохраняют structured notes;</li>
-<li>очищают лишнюю историю;</li>
-<li>изолируют ветки;</li>
-<li>уменьшают контекст между попытками;</li>
-<li>управляют накоплением сообщений;</li>
-<li>позволяют маленьким моделям эффективнее работать с benchmark tasks.</li>
-</ul>
-</section>
-<section id="почему-маленькие-модели-важны"><h2>Почему маленькие модели важны</h2>
-<p>Проект учитывает практическую ситуацию: не всегда есть доступ к большим закрытым моделям или большому GPU-кластеру.</p>
-<p>Часто доступны:</p>
-<ul>
-<li>небольшие open-source модели;</li>
-<li>quantized-модели;</li>
-<li>локальный CPU;</li>
-<li>Mac / Apple Silicon;</li>
-<li>Google Colab;</li>
-<li>одна локальная GPU;</li>
-<li>ограниченный контекст;</li>
-<li>ограниченная память;</li>
-<li>медленный inference.</li>
-</ul>
-<p>В таких условиях особенно важны техники, которые повышают полезность модели без обучения и без тяжёлой инфраструктуры.</p>
-</section>
-<section id="разнородный-compute-как-часть-задачи"><h2>Разнородный compute как часть задачи</h2>
-<p>Проект не предполагает одну фиксированную машину.</p>
-<p>Эксперименты могут запускаться на разных средах:</p>
-<pre><code class="language-text">llama.cpp       — CPU inference
+          <p>For InspectAI, the proxy looks like a normal model. For the proxy, the base model looks like a normal OpenAI-compatible endpoint.</p>
+          <p>Both sides remain simple:</p>
+          <ul>
+            <li>the benchmark does not know about techniques;</li>
+            <li>the base model backend does not know about the benchmark;</li>
+            <li>the proxy connects them and adds experimental logic.</li>
+          </ul>
+        </section>
+        <section id="research-directions"><h2>Research directions</h2>
+          <p>The project studies test-time techniques that change model behavior through inference organization rather than training.</p>
+          <p>Example directions:</p>
+          <ul>
+            <li>Best-of-N;</li>
+            <li>self-consistency;</li>
+            <li>adaptive sampling;</li>
+            <li>ranked voting;</li>
+            <li>context compaction;</li>
+            <li>structured notes;</li>
+            <li>budget-aware reasoning;</li>
+            <li>tool-result summarization;</li>
+            <li>branch isolation;</li>
+            <li>final-answer selection;</li>
+            <li>intermediate state tracking.</li>
+          </ul>
+          <p>The general idea is not to change model weights, but to improve how the model is called, how context is stored, how intermediate results are processed, and how the final answer is selected.</p>
+        </section>
+        <section id="test-time-scaling"><h2>Test time scaling</h2>
+          <p>Test-time scaling tries to improve answer quality by spending more compute at inference time.</p>
+          <p>The simplest example is to make several attempts and choose the best one.</p>
+          <p>More advanced variants:</p>
+          <ul>
+            <li>run several independent reasoning branches;</li>
+            <li>ask the model to verify its own answer;</li>
+            <li>use voting;</li>
+            <li>estimate task difficulty and choose the compute budget adaptively;</li>
+            <li>save intermediate conclusions;</li>
+            <li>use extra model calls only for difficult tasks.</li>
+          </ul>
+          <p>The project is not limited to a strict definition of test-time scaling. Context-saving techniques also matter because real compute is limited and models can be small.</p>
+        </section>
+        <section id="context-optimization"><h2>Context optimization</h2>
+          <p>Context optimization is an important part of the project.</p>
+          <p>In GAIA-like tasks, history can grow quickly:</p>
+          <ul>
+            <li>system prompt;</li>
+            <li>user task;</li>
+            <li>assistant reasoning;</li>
+            <li>tool calls;</li>
+            <li>tool results;</li>
+            <li>intermediate observations;</li>
+            <li>retries;</li>
+            <li>branch histories.</li>
+          </ul>
+          <p>For models with a small context window, this becomes a bottleneck. Even if the model could solve the task, it can lose important information, overflow the context, or degrade on a long history.</p>
+          <p>The project therefore supports techniques that:</p>
+          <ul>
+            <li>compress long tool results;</li>
+            <li>extract facts;</li>
+            <li>save structured notes;</li>
+            <li>remove irrelevant history;</li>
+            <li>isolate branches;</li>
+            <li>reduce context between attempts;</li>
+            <li>manage accumulated messages;</li>
+            <li>help small models work more effectively on benchmark tasks.</li>
+          </ul>
+        </section>
+        <section id="small-models"><h2>Why small models matter</h2>
+          <p>The project reflects a practical situation: access to large closed models or a large GPU cluster is not always available.</p>
+          <p>Commonly available resources are:</p>
+          <ul>
+            <li>small open-source models;</li>
+            <li>quantized models;</li>
+            <li>local CPU;</li>
+            <li>Mac / Apple Silicon;</li>
+            <li>Google Colab;</li>
+            <li>one local GPU;</li>
+            <li>limited context;</li>
+            <li>limited memory;</li>
+            <li>slow inference.</li>
+          </ul>
+          <p>In this setting, techniques that improve the usefulness of the model without training and without heavy infrastructure are especially important.</p>
+        </section>
+        <section id="heterogeneous-compute"><h2>Heterogeneous compute</h2>
+          <pre><code class="language-text">llama.cpp       — CPU inference
 llama.cpp CUDA  — Google Colab
-vLLM            — локальная GPU-машина
+vLLM            — local GPU machine
 MLX             — Mac / Apple Silicon</code></pre>
-<p>Это влияет на весь дизайн:</p>
-<ul>
-<li>backend выбирается конфигурацией;</li>
-<li>benchmark runner не зависит от backend’а;</li>
-<li>proxy не зависит от конкретной модели;</li>
-<li>launcher знает, как поднять нужный pipeline;</li>
-<li>результаты и логи сохраняются отдельно;</li>
-<li>запуск можно воспроизвести.</li>
-</ul>
-</section>
-<section id="модульность-проекта"><h2>Модульность проекта</h2>
-<p>Проект логически делится на две части: proxy / micro-framework отвечает за experimental techniques, а runner / launcher — за воспроизводимый запуск эксперимента.</p>
-</section>
-<section id="1-proxy-micro-framework"><h3>Proxy micro framework</h3>
-<p>Эта часть даёт OpenAI-compatible proxy, hook points, task-local state, middleware chain, feature flags, отдельные модули техник, дополнительные model calls и агрегацию ответов.</p>
-</section>
-<section id="2-runner-launcher"><h3>Runner launcher</h3>
-<p>Эта часть запускает base model backend, proxy и InspectAI / GAIA, делает readiness checks, сохраняет logs, выполняет cleanup, учитывает backend-specific env и поддерживает разные inference-среды.</p>
-<p>Сейчас проект остаётся единым репозиторием, потому что proxy, launcher, benchmark runner и model backend тесно связаны в практическом запуске. Это удобно на этапе активной разработки, когда одновременно меняются hooks, набор техник, scripts, Colab workflow, структура логов и benchmark configuration.</p>
-<p>После стабилизации инфраструктуру можно разделить на два reusable/open-source компонента: <code>tts-proxy-framework</code> для hook-based proxy и <code>gaia-experiment-launcher</code> для запуска GAIA/InspectAI на разнородном compute.</p>
-<p>Вместе эти части дают полный research loop.</p>
-</section>
-<section id="что-считается-результатом-проекта"><h2>Что считается результатом проекта</h2>
-<p>Результат проекта — не один конкретный score на benchmark’е, а инфраструктура, которая позволяет быстро получать и сравнивать такие scores.</p>
-<p>Вклад проекта:</p>
-<ul>
-<li>единый benchmark pipeline;</li>
-<li>proxy layer для test-time техник;</li>
-<li>hook-based micro-framework;</li>
-<li>task-local state;</li>
-<li>feature flags;</li>
-<li>поддержка Best-of-N и похожих техник;</li>
-<li>context-saving возможности;</li>
-<li>launcher для разных backend’ов;</li>
-<li>Colab support;</li>
-<li>Mac / Apple Silicon support;</li>
-<li>CPU / CUDA scenarios;</li>
-<li>воспроизводимая <code>.env</code>-конфигурация;</li>
-<li>centralized logs;</li>
-<li>возможность будущего разделения на reusable-компоненты.</li>
-</ul>
-</section>
-<section id="как-выглядит-типовой-эксперимент"><h2>Как выглядит типовой эксперимент</h2>
-<p>Типовой workflow:</p>
-<pre><code class="language-text">1. Выбрать backend
-2. Выбрать модель
-3. Настроить GAIA task и split
-4. Включить нужные feature flags
-5. Запустить launcher
-6. Launcher поднимает backend
-7. Launcher поднимает proxy
-8. Launcher запускает InspectAI / GAIA
-9. Proxy применяет выбранные техники
-10. Benchmark получает финальные ответы
-11. Logs и результаты сохраняются
-12. Конфигурация может быть воспроизведена позже</code></pre>
-</section>
-<section id="пример-конфигурации"><h2>Пример конфигурации</h2>
-<pre><code class="language-env"># 1. Где запускаем base model backend
-BASE_MODEL_RUNNER_TYPE=vllm16GB
-
-# 2. Доступ к GAIA dataset
+          <p>This affects the whole design:</p>
+          <ul>
+            <li>the backend is selected through configuration;</li>
+            <li>the benchmark runner does not depend on the backend;</li>
+            <li>the proxy does not depend on a specific model;</li>
+            <li>the launcher knows how to start the selected pipeline;</li>
+            <li>results and logs are saved separately;</li>
+            <li>the run can be reproduced.</li>
+          </ul>
+        </section>
+        <section id="modularity"><h2>Project modularity</h2>
+          <p>The project is split into two logical parts. The proxy / micro-framework handles experimental techniques. The runner / launcher handles reproducible experiment execution.</p>
+          <h3>Proxy micro framework</h3>
+          <p>This part provides an OpenAI-compatible proxy, hook points, task-local state, middleware chains, feature flags, technique modules, extra model calls, and answer aggregation.</p>
+          <h3>Runner launcher</h3>
+          <p>This part starts the base model backend, proxy, and InspectAI / GAIA; performs readiness checks; saves logs; performs cleanup; handles backend-specific env; and supports multiple inference environments.</p>
+          <p>The project currently lives in one repository because the proxy, launcher, benchmark runner, and backend are tightly connected during active development. After stabilization, the infrastructure can be split into reusable components: <code>tts-proxy-framework</code> and <code>gaia-experiment-launcher</code>.</p>
+        </section>
+        <section id="project-output"><h2>Project output</h2>
+          <p>The output is not a single benchmark score. It is infrastructure that makes such scores quick to produce and compare.</p>
+          <p>The project contribution includes:</p>
+          <ul>
+            <li>a unified benchmark pipeline;</li>
+            <li>a proxy layer for test-time techniques;</li>
+            <li>a hook-based micro-framework;</li>
+            <li>task-local state;</li>
+            <li>feature flags;</li>
+            <li>support for Best-of-N and related techniques;</li>
+            <li>context-saving capabilities;</li>
+            <li>a launcher for different backends;</li>
+            <li>Colab support;</li>
+            <li>Mac / Apple Silicon support;</li>
+            <li>CPU / CUDA scenarios;</li>
+            <li>reproducible <code>.env</code> configuration;</li>
+            <li>centralized logs;</li>
+            <li>a path toward reusable components.</li>
+          </ul>
+        </section>
+        <section id="workflow"><h2>Typical experiment</h2>
+          <pre><code class="language-text">1. Choose a backend
+2. Choose a model
+3. Configure GAIA task and split
+4. Enable feature flags
+5. Start the launcher
+6. Launcher starts the backend
+7. Launcher starts the proxy
+8. Launcher starts InspectAI / GAIA
+9. Proxy applies selected techniques
+10. Benchmark receives final answers
+11. Logs and results are saved
+12. Configuration can be reproduced later</code></pre>
+        </section>
+        <section id="configuration"><h2>Configuration example</h2>
+          <pre><code class="language-env">BASE_MODEL_RUNNER_TYPE=vllm16GB
 HF_TOKEN=hf_...
-
-# 3. Параметры benchmark&#39;а
 GAIA_TASK=inspect_evals/gaia_level1
 GAIA_SPLIT=validation
-
-# 4. Какие техники включены
 FEATURE_SELF_CONSISTENCY=1
 FEATURE_CONTEXT_COMPACTION=1
 FEATURE_EXAMPLE=0</code></pre>
-<p>Backend-specific часть:</p>
-<pre><code class="language-env">BASE_MODEL_API_BASE_URL=http://127.0.0.1:18081/v1
+          <pre><code class="language-env">BASE_MODEL_API_BASE_URL=http://127.0.0.1:18081/v1
 BASE_MODEL_API_KEY=EMPTY
 BASE_MODEL_NAME=qwen3.5-9b-q4</code></pre>
-<p>Такой подход делает запуск понятным: один файл описывает эксперимент, другой описывает конкретный backend.</p>
-</section>
-<section id="для-кого-проект"><h2>Для кого проект</h2>
-<p>Проект предназначен для:</p>
-<ul>
-<li>исследователей LLM behavior;</li>
-<li>команд, работающих с benchmark’ами;</li>
-<li>разработчиков test-time scaling техник;</li>
-<li>пользователей локальных open-source моделей;</li>
-<li>тех, кто хочет запускать GAIA без закрытых API;</li>
-<li>тех, кто работает с ограниченным compute;</li>
-<li>тех, кто хочет сравнивать inference-time techniques;</li>
-<li>тех, кто хочет отделить benchmark code от experimental code.</li>
-</ul>
-</section>
-<section id="ограничения"><h2>Ограничения</h2>
-<p>Проект ориентирован на исследовательские benchmark-запуски, а не на production serving.</p>
-<p>Это значит:</p>
-<ul>
-<li>главный фокус — удобство исследования;</li>
-<li>допустимы дополнительные model calls;</li>
-<li>допустима экспериментальная логика;</li>
-<li>важна воспроизводимость;</li>
-<li>важны логи;</li>
-<li>важна гибкость;</li>
-<li>latency не является единственным главным критерием.</li>
-</ul>
-<p>Также проект не обещает поддержку любых возможных scaffold’ов. Он лучше всего подходит для техник, которые можно выразить через lifecycle hooks и middleware chain.</p>
-</section>
-<section id="итог"><h2>Итог</h2>
-<p>Проект создаёт практическую инфраструктуру для экспериментов с LLM в benchmark loop.</p>
-<p>Он объединяет:</p>
-<ul>
-<li>OpenAI-compatible proxy;</li>
-<li>hook-based micro-framework;</li>
-<li>feature-based подключение техник;</li>
-<li>task-local state;</li>
-<li>context-saving и test-time scaling подходы;</li>
-<li>launcher для GAIA/InspectAI;</li>
-<li>поддержку разных inference backend’ов;</li>
-<li>воспроизводимую конфигурацию.</li>
-</ul>
-<p>Главная идея: сделать так, чтобы новые техники поведения модели можно было добавлять, запускать и сравнивать быстро — без переписывания benchmark runner’а и без привязки к одному inference backend’у.</p>
-</section>
-    </article>
-  </div>
-</main>
-
+          <p>This structure makes the run understandable: one file describes the experiment, and another describes the concrete backend.</p>
+        </section>
+        <section id="audience"><h2>Audience</h2>
+          <p>The project is intended for:</p>
+          <ul>
+            <li>LLM behavior researchers;</li>
+            <li>teams working with benchmarks;</li>
+            <li>developers of test-time scaling techniques;</li>
+            <li>users of local open-source models;</li>
+            <li>people who want to run GAIA without closed APIs;</li>
+            <li>people working with limited compute;</li>
+            <li>people comparing inference-time techniques;</li>
+            <li>people who want to separate benchmark code from experimental code.</li>
+          </ul>
+        </section>
+        <section id="limitations"><h2>Limitations</h2>
+          <p>The project is aimed at research benchmark runs, not production serving.</p>
+          <p>This means:</p>
+          <ul>
+            <li>the main focus is research convenience;</li>
+            <li>additional model calls are acceptable;</li>
+            <li>experimental logic is acceptable;</li>
+            <li>reproducibility matters;</li>
+            <li>logs matter;</li>
+            <li>flexibility matters;</li>
+            <li>latency is not the only primary criterion.</li>
+          </ul>
+          <p>The project also does not promise support for every possible scaffold. It is best suited for techniques that can be expressed through lifecycle hooks and a middleware chain.</p>
+        </section>
+        <section id="summary"><h2>Summary</h2>
+          <p>The project creates practical infrastructure for LLM experiments inside a benchmark loop.</p>
+          <p>It combines:</p>
+          <ul>
+            <li>an OpenAI-compatible proxy;</li>
+            <li>a hook-based micro-framework;</li>
+            <li>feature-based technique activation;</li>
+            <li>task-local state;</li>
+            <li>context-saving and test-time scaling approaches;</li>
+            <li>a launcher for GAIA / InspectAI;</li>
+            <li>support for different inference backends;</li>
+            <li>reproducible configuration.</li>
+          </ul>
+          <p>The main idea is to make new model-behavior techniques easy to add, run, and compare without rewriting the benchmark runner and without binding the system to one inference backend.</p>
+        </section>
+      </article>
+    </div>
+  </main>
   <script src="assets/site.js"></script>
 </body>
 </html>
