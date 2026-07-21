@@ -3,24 +3,23 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Оглавление - GAIA Pipeline</title>
-  <meta name="description" content="Документация GAIA Pipeline: Test-Time Scaling Proxy, GAIA Experiment Launcher и результаты benchmark-экспериментов.">
+  <title>Оглавление Scaling Laws</title>
+  <meta name="description" content="Документация Scaling Laws: Test-Time Scaling Proxy, GAIA Experiment Launcher и результаты benchmark-экспериментов.">
   <link rel="icon" href="assets/favicon-sl.svg?v=20260721-sl" type="image/svg+xml">
   <link rel="stylesheet" href="assets/style.css?v=20260721-sl">
 </head>
 <body>
   <nav class="nav" aria-label="Основная навигация">
     <div class="nav-inner">
-      <a class="brand" href="index.html" aria-label="GAIA Pipeline">
+      <a class="brand" href="index.html" aria-label="Scaling Laws">
         <span class="brand-mark" aria-hidden="true"></span>
-        <span>GAIA Pipeline</span>
+        <span>Scaling Laws</span>
       </a>
       <div class="links">
-        <a href="index.html" aria-current="page">Оглавление</a>
-          <a href="overview.html">Цель проекта</a>
-          <a href="proxy.html">TTS Proxy</a>
-          <a href="launcher.html">Launcher</a>
+          <a href="index.html" aria-current="page">Оглавление</a>
+          <a href="overview.html">About</a>
           <a href="results.html">Результаты</a>
+          <a href="architecture.html">Документация</a>
       </div>
     </div>
   </nav>
@@ -28,8 +27,8 @@
   <section class="hero">
     <div>
       <div class="eyebrow"><span class="pulse"></span> Главная</div>
-      <h1>GAIA Pipeline</h1>
-      <p class="lead">Инфраструктура для воспроизводимых экспериментов с поведением LLM в benchmark loop: OpenAI-compatible proxy для test-time техник, launcher для GAIA / InspectAI и результаты запусков на разнородном compute.</p>
+      <h1>Scaling Laws</h1>
+      <p class="lead">Проект собирает в один reproducible loop три вещи: идею эксперимента, уже полученные результаты и технический слой, который позволяет повторять запуски на разном compute.</p>
       <div class="hero-actions">
         <a class="button" href="overview.html">Начать с общей цели</a>
         <a class="button secondary" href="results.html">Раздел результатов</a>
@@ -50,94 +49,25 @@ GAIA Benchmark
     <div class="container">
       <div class="section-head">
         <h2>Разделы проекта</h2>
-        <p>Карта документации: общая архитектура, proxy micro-framework, launcher для запусков и результаты экспериментов.</p>
+        <p>Начните с общей картины, затем посмотрите результаты, а если нужно повторить или развить эксперимент, переходите к технической части.</p>
       </div>
       <div class="toc">
-        <article class="toc-card">
-  <span class="tag">Project overview</span>
-  <h3><a href="overview.html">Общая цель проекта: benchmark loop для экспериментов с LLM behavior</a></h3>
-  <ol>
-    <li><a href="overview.html#кратко">Кратко</a></li>
-            <li><a href="overview.html#главная-идея">Главная идея</a></li>
-            <li><a href="overview.html#почему-не-менять-сам-benchmark">Почему не менять сам benchmark</a></li>
-            <li><a href="overview.html#практическая-связка">Практическая связка</a></li>
-            <li><a href="overview.html#почему-openai-compatible-interface-важен">Почему OpenAI-compatible interface важен</a></li>
-            <li><a href="overview.html#что-именно-исследуется">Что именно исследуется</a></li>
-            <li><a href="overview.html#test-time-scaling">Test-time scaling</a></li>
-            <li><a href="overview.html#context-optimization">Context optimization</a></li>
-            <li><a href="overview.html#почему-маленькие-модели-важны">Почему маленькие модели важны</a></li>
-            <li><a href="overview.html#разнородный-compute-как-часть-задачи">Разнородный compute как часть задачи</a></li>
-            <li><a href="overview.html#модульность-проекта">Модульность проекта</a></li>
-            <li><a href="overview.html#что-считается-результатом-проекта">Что считается результатом проекта</a></li>
-            <li><a href="overview.html#как-выглядит-типовой-эксперимент">Как выглядит типовой эксперимент</a></li>
-            <li><a href="overview.html#пример-конфигурации">Пример конфигурации</a></li>
-            <li><a href="overview.html#для-кого-проект">Для кого проект</a></li>
-            <li><a href="overview.html#ограничения">Ограничения</a></li>
-            <li><a href="overview.html#итог">Итог</a></li>
-  </ol>
+<article class="toc-card">
+  <span class="tag">About</span>
+  <h3><a href="overview.html">About проекта</a></h3>
+  <p>Benchmark становится стабильной лабораторией: техники можно менять и сравнивать, не переписывая runner и не привязываясь к одному backend.</p>
 </article>
 
 <article class="toc-card">
-  <span class="tag blue">Proxy / micro-framework</span>
-  <h3><a href="proxy.html">Test-Time Scaling Proxy: hook-based micro-framework для benchmark-экспериментов</a></h3>
-  <ol>
-    <li><a href="proxy.html#кратко">Кратко</a></li>
-            <li><a href="proxy.html#зачем-нужен-proxy">Зачем нужен proxy</a></li>
-            <li><a href="proxy.html#что-делает-test-time-scaling-proxy">Что делает Test-Time Scaling Proxy</a></li>
-            <li><a href="proxy.html#какие-классы-техник-можно-реализовать">Какие классы техник можно реализовать</a></li>
-            <li><a href="proxy.html#hook-based-micro-framework">Hook-based micro-framework</a></li>
-            <li><a href="proxy.html#интерфейс-техники">Интерфейс техники</a></li>
-            <li><a href="proxy.html#task-local-state">Task-local state</a></li>
-            <li><a href="proxy.html#комбинирование-техник">Комбинирование техник</a></li>
-            <li><a href="proxy.html#feature-flags">Feature flags</a></li>
-            <li><a href="proxy.html#пример-best-of-n">Пример: Best-of-N</a></li>
-            <li><a href="proxy.html#пример-context-saving-техники">Пример: context-saving техники</a></li>
-            <li><a href="proxy.html#почему-это-не-просто-wrapper">Почему это не просто wrapper</a></li>
-            <li><a href="proxy.html#где-находится-граница-ответственности">Где находится граница ответственности</a></li>
-            <li><a href="proxy.html#текущее-место-в-проекте">Текущее место в проекте</a></li>
-            <li><a href="proxy.html#для-кого-этот-компонент">Для кого этот компонент</a></li>
-            <li><a href="proxy.html#итог">Итог</a></li>
-  </ol>
-</article>
-
-<article class="toc-card">
-  <span class="tag blue">Runner / infrastructure</span>
-  <h3><a href="launcher.html">GAIA Experiment Launcher: запуск benchmark pipeline на разнородном compute</a></h3>
-  <ol>
-    <li><a href="launcher.html#кратко">Кратко</a></li>
-            <li><a href="launcher.html#какую-проблему-решает-launcher">Какую проблему решает launcher</a></li>
-            <li><a href="launcher.html#общая-схема-запуска">Общая схема запуска</a></li>
-            <li><a href="launcher.html#почему-нужен-отдельный-launcher">Почему нужен отдельный launcher</a></li>
-            <li><a href="launcher.html#поддержанные-варианты-inference">Поддержанные варианты inference</a></li>
-            <li><a href="launcher.html#что-делает-launcher">Что делает launcher</a></li>
-            <li><a href="launcher.html#проверка-готовности-endpoint-ов">Проверка готовности endpoint’ов</a></li>
-            <li><a href="launcher.html#логи-всех-частей-pipeline">Логи всех частей pipeline</a></li>
-            <li><a href="launcher.html#очистка-процессов">Очистка процессов</a></li>
-            <li><a href="launcher.html#google-colab-и-google-drive">Google Colab и Google Drive</a></li>
-            <li><a href="launcher.html#docker-и-no-docker-режимы">Docker и no-Docker режимы</a></li>
-            <li><a href="launcher.html#конфигурация-через-env">Конфигурация через <code>.env</code></a></li>
-            <li><a href="launcher.html#backend-specific-env">Backend-specific <code>.env</code></a></li>
-            <li><a href="launcher.html#воспроизводимость">Воспроизводимость</a></li>
-            <li><a href="launcher.html#почему-это-важно-для-small-compute">Почему это важно для small compute</a></li>
-            <li><a href="launcher.html#текущее-место-в-проекте">Текущее место в проекте</a></li>
-            <li><a href="launcher.html#для-кого-этот-компонент">Для кого этот компонент</a></li>
-            <li><a href="launcher.html#итог">Итог</a></li>
-  </ol>
-</article>
-
-<article class="toc-card">
-  <span class="tag">Project results</span>
+  <span class="tag">Project Results</span>
   <h3><a href="results.html">Полученные результаты</a></h3>
-  <ol>
-    <li><a href="results.html#summary">Сводка результатов</a></li>
-            <li><a href="results.html#compare">Сравнение техник</a></li>
-            <li><a href="results.html#cost">Стоимость</a></li>
-            <li><a href="results.html#usage">Реальное потребление</a></li>
-            <li><a href="results.html#budget-tracker">Budget Tracker</a></li>
-            <li><a href="results.html#schemes">Схемы и таблицы</a></li>
-            <li><a href="results.html#limits">Ограничения</a></li>
-            <li><a href="results.html#notes">Выводы</a></li>
-  </ol>
+  <p>Главный сигнал уже виден: часть test-time техник дает прирост качества, но выигрыш нужно смотреть вместе со временем, токенами и устойчивостью запуска.</p>
+</article>
+
+<article class="toc-card">
+  <span class="tag blue">Technical documentation</span>
+  <h3><a href="architecture.html">Proxy micro framework и runner infrastructure</a></h3>
+  <p>Архитектура разделяет исследовательскую логику и инфраструктуру запуска, поэтому новую технику можно подключить как модуль и воспроизвести на разном compute.</p>
 </article>
 
       </div>
@@ -147,21 +77,37 @@ GAIA Benchmark
   <section class="section">
     <div class="container">
       <div class="section-head">
+        <h2>Результаты</h2>
+        <p>Эти два графика дают быстрый срез: как выглядит базовый уровень на полном наборе задач и во сколько обходятся разные техники.</p>
+      </div>
+      <div class="result-strip">
+        <figure class="figure">
+          <img src="assets/results/baseline-all-53-tasks.png" alt="Baseline на 53 задачах: accuracy, time и token usage per task">
+          <figcaption class="figure-caption">Baseline по всем 53 задачам GAIA Level 1: correctness, время и token usage. Пунктирные линии показывают средние значения.</figcaption>
+        </figure>
+        <figure class="figure">
+          <img src="assets/results/cost-distribution-per-feature.png" alt="Cost distribution per feature across all tasks">
+          <figcaption class="figure-caption">Распределение времени и токенов по техникам. Пунктирная красная линия показывает baseline mean.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <div class="section-head">
         <h2>Быстрые ссылки</h2>
-        <p>Разделы, к которым чаще всего нужно перейти при запуске или описании результатов.</p>
+        <p>Короткие переходы к местам, которые чаще всего нужны при обсуждении архитектуры, настройке запуска и сверке выводов.</p>
       </div>
       <div class="grid three">
         <article class="card"><span class="tag blue">Architecture</span><h3><a href="overview.html#практическая-связка">Практическая связка</a></h3><p>GAIA, InspectAI, proxy и OpenAI-compatible backend в одном benchmark loop.</p></article>
-        <article class="card"><span class="tag gold">Config</span><h3><a href="launcher.html#конфигурация-через-env">Конфигурация через .env</a></h3><p>Backend runner, HF token, GAIA task, split и feature flags.</p></article>
+        <article class="card"><span class="tag gold">Config</span><h3><a href="launcher.html#конфигурация-через-env">Конфигурация через env</a></h3><p>Backend runner, HF token, GAIA task, split и feature flags.</p></article>
         <article class="card"><span class="tag gold">Results</span><h3><a href="results.html">Полученные результаты</a></h3><p>Базовый запуск, сравнение техник, стоимость запусков, графики эффективности и выводы.</p></article>
       </div>
     </div>
   </section>
 </main>
 
-  <footer class="footer">
-    <div class="container">GAIA Pipeline - инфраструктура для воспроизводимых benchmark-экспериментов с OpenAI-compatible моделями.</div>
-  </footer>
   <script src="assets/site.js"></script>
 </body>
 </html>

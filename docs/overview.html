@@ -3,33 +3,32 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Общая цель проекта: benchmark loop для экспериментов с LLM behavior - GAIA Pipeline</title>
-  <meta name="description" content="Документация GAIA Pipeline: Test-Time Scaling Proxy, GAIA Experiment Launcher и результаты benchmark-экспериментов.">
+  <title>Общая цель проекта для benchmark loop экспериментов с LLM behavior Scaling Laws</title>
+  <meta name="description" content="Документация Scaling Laws: Test-Time Scaling Proxy, GAIA Experiment Launcher и результаты benchmark-экспериментов.">
   <link rel="icon" href="assets/favicon-sl.svg?v=20260721-sl" type="image/svg+xml">
   <link rel="stylesheet" href="assets/style.css?v=20260721-sl">
 </head>
 <body>
   <nav class="nav" aria-label="Основная навигация">
     <div class="nav-inner">
-      <a class="brand" href="index.html" aria-label="GAIA Pipeline">
+      <a class="brand" href="index.html" aria-label="Scaling Laws">
         <span class="brand-mark" aria-hidden="true"></span>
-        <span>GAIA Pipeline</span>
+        <span>Scaling Laws</span>
       </a>
       <div class="links">
-        <a href="index.html">Оглавление</a>
-          <a href="overview.html" aria-current="page">Цель проекта</a>
-          <a href="proxy.html">TTS Proxy</a>
-          <a href="launcher.html">Launcher</a>
+          <a href="index.html">Оглавление</a>
+          <a href="overview.html" aria-current="page">About</a>
           <a href="results.html">Результаты</a>
+          <a href="architecture.html">Документация</a>
       </div>
     </div>
   </nav>
   <main>
   <section class="hero single">
     <div>
-      <div class="eyebrow"><span class="pulse"></span> Project overview</div>
-      <h1>Общая цель проекта: benchmark loop для экспериментов с LLM behavior</h1>
-      <p class="lead">Общее описание проекта: зачем нужен отдельный benchmark loop, как связаны proxy и launcher, какие техники исследуются и почему архитектура ориентирована на воспроизводимые эксперименты.</p>
+      <div class="eyebrow"><span class="pulse"></span> About</div>
+      <h1>About проекта</h1>
+      <p class="lead">Benchmark становится стабильной лабораторией: техники можно менять и сравнивать, не переписывая runner и не привязываясь к одному backend.</p>
     </div>
   </section>
   <div class="doc-layout">
@@ -39,9 +38,8 @@
         <a href="#главная-идея">Главная идея</a>
         <a href="#почему-не-менять-сам-benchmark">Почему не менять сам benchmark</a>
         <a href="#практическая-связка">Практическая связка</a>
-        <a href="#почему-openai-compatible-interface-важен">Почему OpenAI-compatible interface важен</a>
         <a href="#что-именно-исследуется">Что именно исследуется</a>
-        <a href="#test-time-scaling">Test-time scaling</a>
+        <a href="#test-time-scaling">Test time scaling</a>
         <a href="#context-optimization">Context optimization</a>
         <a href="#почему-маленькие-модели-важны">Почему маленькие модели важны</a>
         <a href="#разнородный-compute-как-часть-задачи">Разнородный compute как часть задачи</a>
@@ -118,18 +116,6 @@ Local / Colab / Mac / GPU inference</code></pre>
 <li>proxy связывает их и добавляет experimental logic.</li>
 </ul>
 </section>
-<section id="почему-openai-compatible-interface-важен"><h2>Почему OpenAI-compatible interface важен</h2>
-<p>OpenAI-compatible API стал практическим стандартом для локальных и удалённых inference backend’ов.</p>
-<p>Многие backend’ы могут отдавать <code>/v1/chat/completions</code>:</p>
-<ul>
-<li>llama.cpp;</li>
-<li>vLLM;</li>
-<li>MLX-based serving;</li>
-<li>другие локальные или удалённые model servers.</li>
-</ul>
-<p>Если benchmark runner умеет работать с OpenAI-compatible endpoint, то proxy может быть вставлен между benchmark’ом и моделью без глубоких интеграций.</p>
-<p>Это снижает стоимость подключения новых backend’ов и делает архитектуру переносимой.</p>
-</section>
 <section id="что-именно-исследуется"><h2>Что именно исследуется</h2>
 <p>Проект предназначен для исследования test-time техник, которые меняют поведение модели не через обучение, а через организацию инференса.</p>
 <p>Примеры направлений:</p>
@@ -148,7 +134,7 @@ Local / Colab / Mac / GPU inference</code></pre>
 </ul>
 <p>Общая идея: не менять веса модели, а улучшать её работу за счёт того, как она вызывается, как хранится контекст, как обрабатываются промежуточные результаты и как выбирается финальный ответ.</p>
 </section>
-<section id="test-time-scaling"><h2>Test-time scaling</h2>
+<section id="test-time-scaling"><h2>Test time scaling</h2>
 <p>Test-time scaling — это класс подходов, где качество ответа пытаются повысить за счёт дополнительных вычислений во время инференса.</p>
 <p>Простейший пример — сделать несколько попыток и выбрать лучшую.</p>
 <p>Более сложные варианты:</p>
@@ -224,10 +210,10 @@ MLX             — Mac / Apple Silicon</code></pre>
 <section id="модульность-проекта"><h2>Модульность проекта</h2>
 <p>Проект логически делится на две части: proxy / micro-framework отвечает за experimental techniques, а runner / launcher — за воспроизводимый запуск эксперимента.</p>
 </section>
-<section id="1-proxy-micro-framework"><h3>1. Proxy / micro-framework</h3>
+<section id="1-proxy-micro-framework"><h3>Proxy micro framework</h3>
 <p>Эта часть даёт OpenAI-compatible proxy, hook points, task-local state, middleware chain, feature flags, отдельные модули техник, дополнительные model calls и агрегацию ответов.</p>
 </section>
-<section id="2-runner-launcher"><h3>2. Runner / launcher</h3>
+<section id="2-runner-launcher"><h3>Runner launcher</h3>
 <p>Эта часть запускает base model backend, proxy и InspectAI / GAIA, делает readiness checks, сохраняет logs, выполняет cleanup, учитывает backend-specific env и поддерживает разные inference-среды.</p>
 <p>Сейчас проект остаётся единым репозиторием, потому что proxy, launcher, benchmark runner и model backend тесно связаны в практическом запуске. Это удобно на этапе активной разработки, когда одновременно меняются hooks, набор техник, scripts, Colab workflow, структура логов и benchmark configuration.</p>
 <p>После стабилизации инфраструктуру можно разделить на два reusable/open-source компонента: <code>tts-proxy-framework</code> для hook-based proxy и <code>gaia-experiment-launcher</code> для запуска GAIA/InspectAI на разнородном compute.</p>
@@ -335,9 +321,6 @@ BASE_MODEL_NAME=qwen3.5-9b-q4</code></pre>
   </div>
 </main>
 
-  <footer class="footer">
-    <div class="container">GAIA Pipeline - инфраструктура для воспроизводимых benchmark-экспериментов с OpenAI-compatible моделями.</div>
-  </footer>
   <script src="assets/site.js"></script>
 </body>
 </html>

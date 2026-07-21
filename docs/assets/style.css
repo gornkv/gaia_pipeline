@@ -36,6 +36,7 @@ body {
   margin: 0;
   color: var(--ink);
   background: linear-gradient(180deg, #f8fbfc 0%, #f2f6f7 38%, #fff 100%);
+  font-size: 17px;
   line-height: 1.62;
 }
 
@@ -275,7 +276,7 @@ h2 {
 }
 
 h3 {
-  font-size: 20px;
+  font-size: 21px;
 }
 
 p {
@@ -285,7 +286,7 @@ p {
 .lead {
   max-width: 780px;
   color: var(--muted);
-  font-size: 19px;
+  font-size: 20px;
 }
 
 .hero-actions {
@@ -525,6 +526,24 @@ p {
   color: var(--ink);
 }
 
+.toc-group {
+  display: block;
+  margin: 16px 0 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 780;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.side-toc strong + .toc-group {
+  margin-top: 6px;
+  padding-top: 0;
+  border-top: 0;
+}
+
 .side-toc a {
   position: relative;
   z-index: 1;
@@ -533,6 +552,11 @@ p {
   padding: 7px 10px 7px 14px;
   border-radius: 8px;
   overflow-wrap: anywhere;
+}
+
+.side-toc a.toc-child {
+  margin-left: 12px;
+  padding-left: 16px;
 }
 
 .side-toc a:hover {
@@ -723,6 +747,15 @@ p {
   font-size: 13px;
 }
 
+.result-strip {
+  display: grid;
+  gap: 24px;
+}
+
+.result-strip .figure {
+  margin-top: 0;
+}
+
 .figure {
   margin: 22px 0 0;
   border: 1px solid var(--line);
@@ -773,12 +806,6 @@ p {
 
 .data-table td {
   color: var(--muted);
-}
-
-.footer {
-  padding: 34px 0 46px;
-  color: var(--muted);
-  font-size: 14px;
 }
 
 .js .reveal {

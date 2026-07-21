@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Architecture and Technical Documentation Scaling Laws</title>
+  <meta name="description" content="Combined Scaling Laws technical documentation for Test Time Scaling Proxy and GAIA Experiment Launcher.">
+  <link rel="icon" href="../assets/favicon-sl.svg?v=20260721-sl" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/style.css?v=20260721-sl">
+</head>
+<body>
+  <nav class="nav" aria-label="Main navigation">
+    <div class="nav-inner">
+      <a class="brand" href="index.html" aria-label="Scaling Laws"><span class="brand-mark" aria-hidden="true"></span><span>Scaling Laws</span></a>
+      <div class="links">
+        <a href="index.html">Overview</a>
+        <a href="overview.html">About</a>
+        <a href="results.html">Results</a>
+        <a href="architecture.html" aria-current="page">Documentation</a>
+      </div>
+    </div>
+  </nav>
+  <main>
+    <section class="hero single">
+      <div>
+        <div class="eyebrow blue"><span class="pulse"></span> Technical documentation</div>
+        <h1>Proxy micro framework and runner infrastructure</h1>
+        <p class="lead">The architecture separates research logic from run infrastructure, so a new technique can be plugged in as a module and reproduced across heterogeneous compute.</p>
+      </div>
+    </section>
+    <div class="doc-layout">
+      <aside class="side-toc grouped" aria-label="On this page">
+        <strong>On this page</strong>
+        <span class="toc-group">Proxy micro framework</span>
+        <a class="toc-child" href="#proxy-short">Short version</a>
+<a class="toc-child" href="#proxy-why-proxy">Why the proxy exists</a>
+<a class="toc-child" href="#proxy-techniques">Technique classes</a>
+<a class="toc-child" href="#proxy-hooks">Hook based micro framework</a>
+<a class="toc-child" href="#proxy-interface">Interface and state</a>
+<a class="toc-child" href="#proxy-composition">Composition and flags</a>
+<a class="toc-child" href="#proxy-best-of-n">Technique examples</a>
+<a class="toc-child" href="#proxy-not-just-wrapper">Proxy boundaries</a>
+<a class="toc-child" href="#proxy-place-in-project">Place and audience</a>
+<a class="toc-child" href="#proxy-summary">Summary</a>
+        <span class="toc-group">Runner infrastructure</span>
+        <a class="toc-child" href="#launcher-short">Short version</a>
+<a class="toc-child" href="#launcher-problem">Problem and pipeline</a>
+<a class="toc-child" href="#launcher-why-launcher">Launcher and backends</a>
+<a class="toc-child" href="#launcher-what-it-does">What the launcher does</a>
+<a class="toc-child" href="#launcher-readiness">Endpoint readiness</a>
+<a class="toc-child" href="#launcher-logs">Logs and process cleanup</a>
+<a class="toc-child" href="#launcher-colab">Colab and Docker</a>
+<a class="toc-child" href="#launcher-env">Env configuration</a>
+<a class="toc-child" href="#launcher-reproducibility">Reproducibility</a>
+<a class="toc-child" href="#launcher-small-compute">Small compute</a>
+<a class="toc-child" href="#launcher-place-in-project">Place and audience</a>
+<a class="toc-child" href="#launcher-summary">Summary</a>
+      </aside>
+      <article class="doc">
+        <section id="proxy-documentation" class="doc-part-heading"><h2>Proxy micro framework</h2></section>
+        <section id="proxy-short"><h2>Short version</h2>
+          <p>Test-Time Scaling Proxy is an OpenAI-compatible proxy over a base language model. It is designed for experiments with test-time scaling, Best-of-N, self-consistency, context-saving, and other lightweight techniques that can be inserted into a benchmark loop without changing the benchmark code.</p>
+          <pre><code class="language-text">InspectAI / GAIA -> Test-Time Scaling Proxy -> OpenAI-compatible model backend</code></pre>
+          <p>The benchmark calls the proxy as a normal OpenAI-compatible model. The proxy can modify the request, call the base model, process the response, run additional model calls, aggregate results, and return one final response in the expected format.</p>
+        </section>
+        <section id="proxy-why-proxy"><h2>Why the proxy exists</h2>
+<p>The goal is to make model-behavior experiments fast, reproducible, and extensible. Instead of embedding every new technique into the benchmark runner, a technique is implemented as a separate module and connected to task, model-call, and tool-call lifecycle hooks.</p>
+          <p>This is especially useful when:</p>
+          <ul>
+            <li>many model-behavior improvement techniques need to be compared;</li>
+            <li>techniques change often;</li>
+            <li>some techniques require several internal model calls;</li>
+            <li>intermediate state must be preserved between steps;</li>
+            <li>the benchmark must remain unchanged;</li>
+            <li>the base model may run on different backends;</li>
+            <li>the run is not production inference but a research / evaluation loop.</li>
+          </ul>
+<h3>What the proxy does</h3>
+<p>The proxy accepts OpenAI-compatible requests and itself looks like a normal model to the benchmark runner.</p>
+          <p>In practice, the proxy can:</p>
+          <ul>
+            <li>accept a <code>/v1/chat/completions</code> request;</li>
+            <li>read messages, tools, tool calls, and request parameters;</li>
+            <li>change the prompt or parameters before sending the request to the base model;</li>
+            <li>forward the request to the OpenAI-compatible endpoint of the base model;</li>
+            <li>receive the JSON response from the model;</li>
+            <li>modify the model response before returning it to the benchmark;</li>
+            <li>run several internal model calls;</li>
+            <li>aggregate several responses;</li>
+            <li>select the best answer;</li>
+            <li>save usage, counters, intermediate results, and internal state;</li>
+            <li>return one final OpenAI-compatible response to the benchmark runner.</li>
+          </ul>
+          <p>All of this logic is hidden from the benchmark. It continues to behave as if it were working with one model.</p>
+</section>
+        
+        <section id="proxy-techniques"><h2>Technique classes</h2>
+          <p>The proxy is not meant for every possible inference architecture. It is best suited for techniques that naturally fit a hook-based model.</p>
+          <p>Good fits include:</p>
+          <ul>
+            <li>Best-of-N;</li>
+            <li>self-consistency;</li>
+            <li>ranked voting;</li>
+            <li>adaptive Best-of-N;</li>
+            <li>budget tracking;</li>
+            <li>context compaction;</li>
+            <li>structured notes;</li>
+            <li>ReSum-like techniques;</li>
+            <li>techniques that record intermediate reasoning state;</li>
+            <li>techniques that modify the prompt before a model call;</li>
+            <li>techniques that analyze the response after a model call;</li>
+            <li>techniques that compress or transform tool results;</li>
+            <li>techniques that track usage, tool-call count, and context length;</li>
+            <li>lightweight test-time scaling techniques that do not require rewriting the execution loop.</li>
+          </ul>
+          <p>Heavy tree-search scaffolds, complex external planners, and production serving architectures are less natural fits, although parts of them can still be expressed through hooks.</p>
+        </section>
+        <section id="proxy-hooks"><h2>Hook based micro framework</h2>
+          <p>The proxy contains a small micro-framework with hook points grouped by lifecycle.</p>
+          <h3>Task lifecycle</h3>
+          <p>These hooks are related to the start and end of a benchmark task.</p>
+          <ul>
+            <li><code>before_task_call</code></li>
+            <li><code>after_task_call</code></li>
+          </ul>
+          <p>They can initialize technique state, save the original task payload, start a new branch, collect the final answer, select the best result, or clear state after the task finishes.</p>
+          <h3>Model call lifecycle</h3>
+          <p>These hooks are related to each call to the base model.</p>
+          <ul>
+            <li><code>before_chat_message</code></li>
+            <li><code>after_chat_message</code></li>
+          </ul>
+          <p>They can modify the request before sending it to the model, add instructions, manage message history, collect usage, log responses, save intermediate variants, and prepare data for later aggregation.</p>
+          <h3>Tool call lifecycle</h3>
+          <p>These hooks are related to tool calls and tool results.</p>
+          <ul>
+            <li><code>before_tool_call</code></li>
+            <li><code>after_tool_call</code></li>
+          </ul>
+          <p>They can track tool calls, modify payloads, compress tool results, save observations, manage context after tool use, and implement techniques tied to tool-augmented reasoning.</p>
+        </section>
+        <section id="proxy-interface"><h2>Interface and state</h2>
+<pre><code class="language-python">class Technique:
+    feature_name = "FEATURE_MY_TECHNIQUE"
+
+    def before_task_call(self, payload): ...
+    def before_chat_message(self, payload): ...
+    def after_chat_message(self, response): ...
+    def after_task_call(self, response): ...
+    def before_tool_call(self, response): ...
+    def after_tool_call(self, payload): ...</code></pre>
+          <p>A technique does not need complex infrastructure. In the simple case, it is one file and one class that implements only the required hooks. The remaining hooks can stay empty or return data unchanged.</p>
+<h3>Task local state</h3>
+<p>Task-local state is available between hooks. This is an important part of the architecture.</p>
+          <p>A technique can store:</p>
+          <ul>
+            <li>counters;</li>
+            <li>lists of intermediate answers;</li>
+            <li>usage;</li>
+            <li>number of model calls;</li>
+            <li>number of tool calls;</li>
+            <li>the original task payload;</li>
+            <li>the payload of the current branch;</li>
+            <li>voting results;</li>
+            <li>compacted context;</li>
+            <li>structured notes;</li>
+            <li>internal task-complexity signals;</li>
+            <li>any data needed by a later hook.</li>
+          </ul>
+          <p>This enables multi-step techniques such as Best-of-N, which needs to remember branches, collected answers, remaining attempts, and the selected final answer.</p>
+</section>
+        
+        <section id="proxy-composition"><h2>Composition and flags</h2>
+<p>Multiple techniques can be enabled at once. Active techniques form a linear middleware chain:</p>
+          <pre><code class="language-text">request/response -> Technique A hook -> Technique B hook -> Technique C hook</code></pre>
+          <p>For example, one technique can track budget, another can compact context, a third can run Best-of-N, a fourth can collect structured notes, and a fifth can select the final answer.</p>
+          <p>This composition does not require rewriting the benchmark runner and does not require merging all techniques into one monolithic module.</p>
+<h3>Feature flags</h3>
+<pre><code class="language-env">FEATURE_SELF_CONSISTENCY=1
+FEATURE_CONTEXT_COMPACTION=1
+FEATURE_EXAMPLE=0</code></pre>
+          <p>This has several advantages:</p>
+          <ul>
+            <li>techniques can be enabled and disabled quickly;</li>
+            <li>experiment configuration can be saved;</li>
+            <li>a run can be reproduced later;</li>
+            <li>several technique sets can be compared;</li>
+            <li>the same benchmark can be run with different experimental settings.</li>
+          </ul>
+</section>
+        
+        <section id="proxy-best-of-n"><h2>Technique examples</h2>
+<pre><code class="language-text">Benchmark request
+        ↓
+TTS Proxy
+        ↓
+Branch 1 -> base model
+Branch 2 -> base model
+Branch 3 -> base model
+        ↓
+Aggregation / voting / selection
+        ↓
+Final response to benchmark</code></pre>
+          <p>The benchmark receives one final answer and does not need to know that several internal attempts were made.</p>
+          <p>This technique needs:</p>
+          <ul>
+            <li>saving the original task payload;</li>
+            <li>running several branches;</li>
+            <li>isolating branch histories;</li>
+            <li>collecting answers;</li>
+            <li>selecting the final answer;</li>
+            <li>returning one response in OpenAI-compatible format.</li>
+          </ul>
+<h3>Context saving example</h3>
+<p>In GAIA-like tasks, the model can use tools, receive long tool results, and gradually accumulate context. For small models or models with limited context, this becomes a problem.</p>
+          <p>The proxy can implement context-saving techniques that:</p>
+          <ul>
+            <li>compress long tool results;</li>
+            <li>extract structured notes;</li>
+            <li>remove irrelevant history fragments;</li>
+            <li>store compact task state;</li>
+            <li>track context growth;</li>
+            <li>add a short state summary to the prompt instead of the full history.</li>
+          </ul>
+          <p>This is especially important under limited compute, when using small local models, quantized models, or models with a small context window.</p>
+</section>
+        
+        <section id="proxy-not-just-wrapper"><h2>Proxy boundaries</h2>
+<p>A normal model wrapper usually only forwards requests. Test-Time Scaling Proxy adds a research-oriented lifecycle layer.</p>
+          <p>It does not simply pass the request to the backend; it creates intervention points in the benchmark loop:</p>
+          <ul>
+            <li>before the task;</li>
+            <li>before the model call;</li>
+            <li>after the model call;</li>
+            <li>before the tool call;</li>
+            <li>after the tool result;</li>
+            <li>after the task finishes.</li>
+          </ul>
+          <p>This turns the proxy into a micro-framework for experiments, not just an HTTP proxy.</p>
+<h3>Responsibility boundary</h3>
+<p>Test-Time Scaling Proxy does not replace the benchmark runner and does not replace the model backend.</p>
+          <p>The benchmark runner is responsible for:</p>
+          <ul>
+            <li>choosing the benchmark;</li>
+            <li>loading tasks;</li>
+            <li>scoring;</li>
+            <li>the execution loop;</li>
+            <li>tools;</li>
+            <li>evaluating the result.</li>
+          </ul>
+          <p>The base model backend is responsible for:</p>
+          <ul>
+            <li>loading the model;</li>
+            <li>inference;</li>
+            <li>the OpenAI-compatible endpoint;</li>
+            <li>backend-specific behavior: llama.cpp, vLLM, MLX, and so on.</li>
+          </ul>
+          <p>Test-Time Scaling Proxy is responsible for:</p>
+          <ul>
+            <li>experimental intervention points;</li>
+            <li>connecting techniques;</li>
+            <li>task-local state;</li>
+            <li>additional model calls;</li>
+            <li>aggregation;</li>
+            <li>context-saving;</li>
+            <li>preserving the OpenAI-compatible interface for the benchmark.</li>
+          </ul>
+</section>
+        
+        <section id="proxy-place-in-project"><h2>Place and audience</h2>
+<p>Today the micro-framework is part of a unified GAIA/InspectAI experiment project. Later it can be extracted into a reusable repository such as <code>tts-proxy-framework</code>.</p>
+          <p>Such a repository could be used not only for GAIA, but for any benchmark or evaluation loop that can call an OpenAI-compatible model endpoint.</p>
+<h3>Audience</h3>
+<p>The component is useful for:</p>
+          <ul>
+            <li>test-time scaling researchers;</li>
+            <li>benchmark infrastructure developers;</li>
+            <li>teams comparing inference-time techniques;</li>
+            <li>people working with local LLMs;</li>
+            <li>people experimenting with small models;</li>
+            <li>people who want to separate benchmark code from experimental techniques;</li>
+            <li>people who want to prototype new scaffolds on top of OpenAI-compatible models quickly.</li>
+          </ul>
+</section>
+        
+        <section id="proxy-summary"><h2>Summary</h2>
+          <p>Test-Time Scaling Proxy makes benchmark experiments simpler:</p>
+          <ul>
+            <li>the benchmark remains unchanged;</li>
+            <li>the model remains a normal OpenAI-compatible backend;</li>
+            <li>techniques are added as separate modules;</li>
+            <li>hooks provide intervention points in the task lifecycle;</li>
+            <li>task-local state enables multi-step techniques;</li>
+            <li>feature flags make experiments reproducible;</li>
+            <li>different techniques can be combined in one run.</li>
+          </ul>
+          <p>The main idea is to separate research techniques from the benchmark runner and model backend by turning them into a pluggable layer between the two.</p>
+        </section>
+        <section id="launcher-documentation" class="doc-part-heading"><h2>Runner infrastructure</h2></section>
+        <section id="launcher-short"><h2>Short version</h2>
+          <p>GAIA Experiment Launcher starts the full experimental loop:</p>
+          <pre><code class="language-text">base model backend -> Test-Time Scaling Proxy -> InspectAI / GAIA</code></pre>
+          <p>It allows the same benchmark to run reproducibly on different inference backends and compute environments: CPU, CUDA, Google Colab, Mac / Apple Silicon, and local GPU machines.</p>
+        </section>
+        <section id="launcher-problem"><h2>Problem and pipeline</h2>
+<p>Local LLM experiments depend heavily on the runtime environment. One model may run through llama.cpp on CPU, another through llama.cpp CUDA in Colab, another through MLX on Apple Silicon, and another through vLLM on a GPU server. The benchmark runner and proxy still need the same OpenAI-compatible endpoint.</p>
+          <p>Without a launcher, every run becomes a sequence of manual steps:</p>
+          <ul>
+            <li>start the model backend;</li>
+            <li>check that the model has loaded;</li>
+            <li>start the proxy;</li>
+            <li>check that the proxy is available;</li>
+            <li>start InspectAI / GAIA;</li>
+            <li>pass the endpoint correctly;</li>
+            <li>remember the API key;</li>
+            <li>save logs;</li>
+            <li>clean processes after failures;</li>
+            <li>repeat the whole process on another machine.</li>
+          </ul>
+          <p>The launcher automates this process.</p>
+<h3>Launch pipeline</h3>
+<pre><code class="language-text">1. Base model backend
+2. Test-Time Scaling Proxy
+3. InspectAI / GAIA benchmark runner</code></pre>
+          <p>The backend serves an OpenAI-compatible API. The proxy connects to the backend and exposes another OpenAI-compatible API to the benchmark. InspectAI / GAIA calls the proxy as the model.</p>
+</section>
+        
+        <section id="launcher-why-launcher"><h2>Launcher and backends</h2>
+<p>The project needs not just one benchmark run, but repeated runs across different configurations:</p>
+          <ul>
+            <li>different models;</li>
+            <li>different backends;</li>
+            <li>different techniques;</li>
+            <li>different feature flags;</li>
+            <li>different GAIA levels;</li>
+            <li>different splits;</li>
+            <li>different runtime environments;</li>
+            <li>Docker / no-Docker modes;</li>
+            <li>local machines and Colab.</li>
+          </ul>
+          <p>The launcher turns this into a reproducible configuration-driven process.</p>
+<h3>Supported inference modes</h3>
+<pre><code class="language-text">llama.cpp       — CPU inference
+llama.cpp CUDA  — Google Colab
+vLLM            — local GPU machine
+MLX             — Mac / Apple Silicon</code></pre>
+          <p>These modes cover several practical scenarios.</p>
+          <h3>llama.cpp CPU inference</h3>
+          <p>This is used to run models on CPU. It is useful when no GPU is available or when the pipeline needs to be checked on a simple machine. CPU inference is slow, but convenient as a baseline and fallback.</p>
+          <h3>llama.cpp CUDA Google Colab</h3>
+          <p>This is used for CUDA inference in Google Colab. Colab is important because it provides GPU access without setting up a dedicated machine. The no-Docker mode is especially important in Colab because Docker is not always available or convenient in a notebook environment.</p>
+          <h3>vLLM local GPU machine</h3>
+          <p>vLLM is used as a local GPU backend. It is useful for OpenAI-compatible serving, even if in some experiments it may be less convenient or perform worse than other options.</p>
+          <p>The key point is that the launcher separates the benchmark pipeline from the concrete backend: if one backend is a poor fit, it can be replaced without changing benchmark or proxy logic.</p>
+          <h3>MLX Mac Apple Silicon</h3>
+          <p>MLX is used on Mac / Apple Silicon. This matters for local development and experiments on Apple hardware. It allows a Mac to act as a full pipeline test environment without requiring CUDA.</p>
+</section>
+        
+        <section id="launcher-what-it-does"><h2>What the launcher does</h2>
+          <p>The launcher starts pipeline components in order:</p>
+          <pre><code class="language-text">base model backend -> TTS Proxy -> InspectAI / GAIA</code></pre>
+          <p>Then it controls component readiness, saves logs, and helps reproduce the run.</p>
+          <p>Main functions:</p>
+          <ul>
+            <li>starts pipeline components sequentially;</li>
+            <li>checks endpoint readiness;</li>
+            <li>cleans processes during restarts;</li>
+            <li>saves stdout/stderr logs for all components in one place;</li>
+            <li>can save Colab results and logs to Google Drive;</li>
+            <li>uses <code>.env</code> for configuration;</li>
+            <li>allows backend switching without rewriting scripts;</li>
+            <li>separates common benchmark parameters from backend-specific parameters.</li>
+          </ul>
+        </section>
+        <section id="launcher-readiness"><h2>Endpoint readiness</h2>
+          <p>Pipeline components depend on each other. InspectAI / GAIA should not start before the proxy is available. The proxy should not start work without a base model backend. The backend must first load the model and expose an endpoint.</p>
+          <pre><code class="language-text">1. Start base model backend
+2. Start Test-Time Scaling Proxy
+3. Start InspectAI / GAIA benchmark</code></pre>
+          <p>A launched process is not necessarily ready to receive requests. The launcher performs readiness checks before moving to the next stage, which reduces manual errors and is especially important for heavy models and unstable environments such as Colab.</p>
+        </section>
+        <section id="launcher-logs"><h2>Logs and process cleanup</h2>
+<p>Logs are essential for debugging benchmark runs. If a run fails, it should be clear where the failure happened:</p>
+          <ul>
+            <li>the backend did not load the model;</li>
+            <li>the proxy could not connect to the backend;</li>
+            <li>the benchmark runner received an error;</li>
+            <li>the endpoint did not start;</li>
+            <li>memory ran out;</li>
+            <li>configuration was broken;</li>
+            <li>a technique inside the proxy returned an invalid response.</li>
+          </ul>
+          <p>The launcher stores stdout/stderr logs for all parts in one place. This makes it possible to reconstruct the run and understand which component failed.</p>
+<h3>Process cleanup</h3>
+<p>Repeated experiments often involve failures, hanging processes, or restarts. Without cleanup, stale backends, stale proxies, port conflicts, or competing processes can appear.</p>
+          <p>The launcher cleans processes during restarts and shutdowns.</p>
+          <p>This is useful during iterative work:</p>
+          <ul>
+            <li>change <code>.env</code>;</li>
+            <li>enable a new feature;</li>
+            <li>restart the benchmark;</li>
+            <li>get new logs;</li>
+            <li>repeat with another model.</li>
+          </ul>
+</section>
+        
+        <section id="launcher-colab"><h2>Colab and Docker</h2>
+<p>Google Colab is an accessible CUDA inference environment. But Colab has constraints:</p>
+          <ul>
+            <li>the environment is temporary;</li>
+            <li>processes can fail;</li>
+            <li>the runtime can restart;</li>
+            <li>files can disappear;</li>
+            <li>Docker can be unavailable or inconvenient;</li>
+            <li>results need to be saved explicitly.</li>
+          </ul>
+          <p>The launcher therefore supports a workflow where benchmark results and logs can be saved to Google Drive. This makes Colab useful not only as a one-off environment, but as a compute backend for a series of experiments.</p>
+<h3>Docker and no Docker modes</h3>
+<p>The project accounts for the fact that different environments require different launch methods. Docker is convenient for local reproducibility, but it is not always available in Colab. Therefore the launcher supports a no-Docker scenario.</p>
+          <p>The split matters because:</p>
+          <ul>
+            <li>local runs can use Docker;</li>
+            <li>Colab can run without Docker;</li>
+            <li>scripts and <code>.env</code> remain the common control surface;</li>
+            <li>the benchmark pipeline keeps the same structure.</li>
+          </ul>
+</section>
+        
+        <section id="launcher-env"><h2>Env configuration</h2>
+<pre><code class="language-env">BASE_MODEL_RUNNER_TYPE=vllm16GB
+HF_TOKEN=hf_...
+GAIA_TASK=inspect_evals/gaia_level1
+GAIA_SPLIT=validation
+FEATURE_SELF_CONSISTENCY=1
+FEATURE_CONTEXT_COMPACTION=1
+FEATURE_EXAMPLE=0</code></pre>
+          <p>This file controls:</p>
+          <ul>
+            <li>backend runner selection;</li>
+            <li>GAIA dataset access;</li>
+            <li>benchmark task;</li>
+            <li>split;</li>
+            <li>enabled experimental techniques.</li>
+          </ul>
+<h3>Backend specific env</h3>
+<pre><code class="language-env">BASE_MODEL_API_BASE_URL=http://127.0.0.1:18081/v1
+BASE_MODEL_API_KEY=EMPTY
+BASE_MODEL_NAME=qwen3.5-9b-q4</code></pre>
+          <p>This allows switching the backend without mixing model, endpoint, and benchmark parameters in one place.</p>
+          <p>The common <code>.env</code> describes the experiment. The backend-specific <code>.env</code> describes the concrete way the base model is served.</p>
+</section>
+        
+        <section id="launcher-reproducibility"><h2>Reproducibility</h2>
+          <p>A saved <code>.env</code> effectively describes the run.</p>
+          <p>From it, one can see:</p>
+          <ul>
+            <li>which backend was used;</li>
+            <li>which model was connected;</li>
+            <li>which benchmark task was run;</li>
+            <li>which split was used;</li>
+            <li>which techniques were enabled;</li>
+            <li>which environment parameters mattered.</li>
+          </ul>
+          <p>This is important in a research workflow, where results need to be compared and differences between runs need to be explained.</p>
+        </section>
+        <section id="launcher-small-compute"><h2>Small compute</h2>
+          <p>The project was created under limited-compute conditions, and that affects the architecture.</p>
+          <p>When a large GPU cluster is not available, heterogeneous resources become necessary:</p>
+          <ul>
+            <li>local CPU;</li>
+            <li>Mac / Apple Silicon;</li>
+            <li>Google Colab;</li>
+            <li>local GPU;</li>
+            <li>quantized models;</li>
+            <li>small models;</li>
+            <li>different backends.</li>
+          </ul>
+          <p>The launcher avoids binding the whole project to one ideal inference setup. Instead, the pipeline can move between available environments.</p>
+        </section>
+        <section id="launcher-place-in-project"><h2>Place and audience</h2>
+<p>The launcher currently lives in the same repository as the proxy and GAIA/InspectAI runner. Later it can be extracted into <code>gaia-experiment-launcher</code>.</p>
+          <p>Such a repository could be used independently of a specific set of test-time techniques and serve as an infrastructure layer for running GAIA / InspectAI on different compute backends.</p>
+<h3>Audience</h3>
+<p>The launcher is useful for:</p>
+          <ul>
+            <li>local GAIA runs;</li>
+            <li>benchmarks on small models;</li>
+            <li>backend comparisons;</li>
+            <li>Google Colab runs;</li>
+            <li>Mac / Apple Silicon runs;</li>
+            <li>reproducible evaluation runs;</li>
+            <li>research teams with limited compute;</li>
+            <li>quick switching between models and inference backends.</li>
+          </ul>
+</section>
+        
+        <section id="launcher-summary"><h2>Summary</h2>
+          <p>GAIA Experiment Launcher handles the infrastructure side of the project:</p>
+          <ul>
+            <li>starts the full benchmark pipeline;</li>
+            <li>supports different inference backends;</li>
+            <li>works with heterogeneous compute;</li>
+            <li>is controlled through <code>.env</code>;</li>
+            <li>saves logs;</li>
+            <li>checks endpoint readiness;</li>
+            <li>cleans processes;</li>
+            <li>helps reproduce experiments.</li>
+          </ul>
+          <p>The main idea is that launching a benchmark should be as reproducible and switchable as the experiment configuration.</p>
+        </section>
+      </article>
+    </div>
+  </main>
+  <script src="../assets/site.js"></script>
+</body>
+</html>
