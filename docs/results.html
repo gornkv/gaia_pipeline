@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Полученные результаты - GAIA Pipeline</title>
+  <meta name="description" content="Документация GAIA Pipeline: Test-Time Scaling Proxy, GAIA Experiment Launcher и результаты benchmark-экспериментов.">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <nav class="nav" aria-label="Основная навигация">
+    <div class="nav-inner">
+      <a class="brand" href="index.html" aria-label="GAIA Pipeline">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>GAIA Pipeline</span>
+      </a>
+      <div class="links">
+        <a href="index.html">Оглавление</a>
+          <a href="overview.html">Цель проекта</a>
+          <a href="proxy.html">TTS Proxy</a>
+          <a href="launcher.html">Launcher</a>
+          <a href="results.html" aria-current="page">Результаты</a>
+      </div>
+    </div>
+  </nav>
+  <main>
+  <section class="hero single">
+    <div>
+      <div class="eyebrow"><span class="pulse"></span> Project results</div>
+      <h1>Полученные результаты</h1>
+      <p class="lead">Раздел подготовлен под публикацию уже проведенных benchmark runs. Его можно заполнять по мере появления score, логов, `.env` конфигураций и сравнений техник.</p>
+    </div>
+  </section>
+  <div class="doc-layout">
+    <aside class="side-toc" aria-label="Оглавление раздела">
+      <strong>На этой странице</strong>
+      <a href="#summary">Сводка</a>
+      <a href="#runs">Таблица запусков</a>
+      <a href="#compare">Сравнение техник</a>
+      <a href="#artifacts">Артефакты</a>
+      <a href="#notes">Выводы</a>
+    </aside>
+    <article class="doc">
+      <section id="summary">
+        <h2>Сводка результатов</h2>
+        <p>Этот блок предназначен для краткого состояния проекта после запусков: какие модели проверены, какие backend'ы использовались, какие техники включались и какой эффект наблюдался относительно baseline.</p>
+        <div class="metric-board">
+          <div class="metric"><strong>TBD</strong><span>Лучший GAIA score</span></div>
+          <div class="metric"><strong>TBD</strong><span>Baseline score</span></div>
+          <div class="metric"><strong>TBD</strong><span>Лучший backend</span></div>
+          <div class="metric"><strong>TBD</strong><span>Проверенные конфигурации</span></div>
+        </div>
+      </section>
+      <section id="runs">
+        <h2>Таблица запусков</h2>
+        <p>Здесь удобно фиксировать каждый benchmark run: дату, модель, backend, GAIA task, split, диапазон sample'ов, включенные feature flags, score и ссылку на логи.</p>
+        <pre><code>| Дата | Модель | Backend | Task / split | Features | Score | Logs |
+| ---- | ------ | ------- | ------------ | -------- | ----- | ---- |
+| TBD  | TBD    | TBD     | TBD          | TBD      | TBD   | TBD  |</code></pre>
+      </section>
+      <section id="compare">
+        <h2>Сравнение техник</h2>
+        <p>Этот раздел нужен для baseline vs intervention: Best-of-N, self-consistency, context compaction, structured notes, budget-aware reasoning и других техник, которые подключаются через proxy hooks.</p>
+        <ul>
+          <li>Score delta относительно baseline.</li>
+          <li>Дополнительные model calls и token budget.</li>
+          <li>Изменение количества tool calls.</li>
+          <li>Latency и стабильность запуска.</li>
+          <li>Качественные наблюдения по ошибкам и regressions.</li>
+        </ul>
+      </section>
+      <section id="artifacts">
+        <h2>Артефакты</h2>
+        <p>Сюда стоит добавлять ссылки на InspectAI viewer, директории `_state/inspect-logs`, сохраненные `.env` файлы, stdout/stderr backend'а, proxy logs и заметки по окружению.</p>
+      </section>
+      <section id="notes">
+        <h2>Выводы</h2>
+        <p>Финальный блок для интерпретации: какие техники дали прирост, какие оказались дорогими по budget, какие backend'ы были стабильнее и какие эксперименты нужно повторить.</p>
+      </section>
+    </article>
+  </div>
+</main>
+
+  <footer class="footer">
+    <div class="container">GAIA Pipeline - инфраструктура для воспроизводимых benchmark-time экспериментов с OpenAI-compatible моделями.</div>
+  </footer>
+</body>
+</html>

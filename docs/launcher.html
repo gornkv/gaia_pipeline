@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GAIA Experiment Launcher: запуск benchmark pipeline на разнородном compute - GAIA Pipeline</title>
+  <meta name="description" content="Документация GAIA Pipeline: Test-Time Scaling Proxy, GAIA Experiment Launcher и результаты benchmark-экспериментов.">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <nav class="nav" aria-label="Основная навигация">
+    <div class="nav-inner">
+      <a class="brand" href="index.html" aria-label="GAIA Pipeline">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>GAIA Pipeline</span>
+      </a>
+      <div class="links">
+        <a href="index.html">Оглавление</a>
+          <a href="overview.html">Цель проекта</a>
+          <a href="proxy.html">TTS Proxy</a>
+          <a href="launcher.html" aria-current="page">Launcher</a>
+          <a href="results.html">Результаты</a>
+      </div>
+    </div>
+  </nav>
+  <main>
+  <section class="hero single">
+    <div>
+      <div class="eyebrow"><span class="pulse"></span> Runner / infrastructure</div>
+      <h1>GAIA Experiment Launcher: запуск benchmark pipeline на разнородном compute</h1>
+      <p class="lead">Полный текст раздела из <code>docs/info.md</code> с сохранением содержания и структуры.</p>
+    </div>
+  </section>
+  <div class="doc-layout">
+    <aside class="side-toc" aria-label="Оглавление раздела">
+      <strong>На этой странице</strong>
+      <a href="#кратко">Кратко</a>
+        <a href="#какую-проблему-решает-launcher">Какую проблему решает launcher</a>
+        <a href="#общая-схема-запуска">Общая схема запуска</a>
+        <a href="#почему-нужен-отдельный-launcher">Почему нужен отдельный launcher</a>
+        <a href="#поддержанные-варианты-inference">Поддержанные варианты inference</a>
+        <a href="#llama-cpp-cpu-inference" style="padding-left: 14px">llama.cpp — CPU inference</a>
+        <a href="#llama-cpp-cuda-google-colab" style="padding-left: 14px">llama.cpp CUDA — Google Colab</a>
+        <a href="#vllm-локальная-gpu-машина" style="padding-left: 14px">vLLM — локальная GPU-машина</a>
+        <a href="#mlx-mac-apple-silicon" style="padding-left: 14px">MLX — Mac / Apple Silicon</a>
+        <a href="#что-делает-launcher">Что делает launcher</a>
+        <a href="#почему-важна-последовательность-запуска">Почему важна последовательность запуска</a>
+        <a href="#проверка-готовности-endpoint-ов">Проверка готовности endpoint’ов</a>
+        <a href="#логи-всех-частей-pipeline">Логи всех частей pipeline</a>
+        <a href="#очистка-процессов">Очистка процессов</a>
+        <a href="#google-colab-и-google-drive">Google Colab и Google Drive</a>
+        <a href="#docker-и-no-docker-режимы">Docker и no-Docker режимы</a>
+        <a href="#конфигурация-через-env">Конфигурация через <code>.env</code></a>
+        <a href="#backend-specific-env">Backend-specific <code>.env</code></a>
+        <a href="#воспроизводимость">Воспроизводимость</a>
+        <a href="#почему-это-важно-для-small-compute">Почему это важно для small compute</a>
+        <a href="#текущее-место-в-проекте">Текущее место в проекте</a>
+        <a href="#для-кого-этот-компонент">Для кого этот компонент</a>
+        <a href="#итог">Итог</a>
+    </aside>
+    <article class="doc">
+      <section id="кратко"><h2>Кратко</h2>
+<p>GAIA Experiment Launcher — это инфраструктурная часть проекта, которая запускает полный экспериментальный контур:</p>
+<pre><code class="language-text">base model backend → Test-Time Scaling Proxy → InspectAI / GAIA</code></pre>
+<p>Launcher нужен для того, чтобы один и тот же benchmark можно было воспроизводимо запускать на разных inference backend’ах и в разных вычислительных средах: CPU, CUDA, Google Colab, Mac / Apple Silicon.</p>
+<p>Главная задача launcher’а — убрать ручную сборку окружения и сделать запуск экспериментов повторяемым.</p>
+</section>
+<section id="какую-проблему-решает-launcher"><h2>Какую проблему решает launcher</h2>
+<p>Эксперименты с локальными LLM часто зависят от среды запуска.</p>
+<p>Одна модель может запускаться через llama.cpp на CPU, другая через llama.cpp CUDA в Colab, третья через MLX на Apple Silicon, четвёртая через vLLM на локальной GPU-машине. При этом benchmark runner и proxy должны получать одинаковый OpenAI-compatible endpoint.</p>
+<p>Без launcher’а каждый запуск превращается в набор ручных действий:</p>
+<ul>
+<li>поднять model backend;</li>
+<li>проверить, что модель загрузилась;</li>
+<li>поднять proxy;</li>
+<li>проверить, что proxy доступен;</li>
+<li>запустить InspectAI / GAIA;</li>
+<li>правильно передать endpoint;</li>
+<li>не забыть API key;</li>
+<li>сохранить логи;</li>
+<li>очистить процессы после падения;</li>
+<li>повторить это всё на другой машине.</li>
+</ul>
+<p>Launcher автоматизирует этот процесс.</p>
+</section>
+<section id="общая-схема-запуска"><h2>Общая схема запуска</h2>
+<p>Pipeline состоит из трёх основных частей:</p>
+<pre><code class="language-text">1. Base model backend
+2. Test-Time Scaling Proxy
+3. InspectAI / GAIA benchmark runner</code></pre>
+<p>Base model backend поднимает модель и предоставляет OpenAI-compatible API.</p>
+<p>Test-Time Scaling Proxy подключается к backend’у и сам предоставляет OpenAI-compatible API для benchmark runner’а.</p>
+<p>InspectAI / GAIA обращается к proxy как к модели и выполняет benchmark tasks.</p>
+</section>
+<section id="почему-нужен-отдельный-launcher"><h2>Почему нужен отдельный launcher</h2>
+<p>В проекте важно не просто один раз запустить benchmark, а многократно запускать разные конфигурации:</p>
+<ul>
+<li>разные модели;</li>
+<li>разные backend’ы;</li>
+<li>разные техники;</li>
+<li>разные feature flags;</li>
+<li>разные уровни GAIA;</li>
+<li>разные split’ы;</li>
+<li>разные среды запуска;</li>
+<li>Docker / no-Docker режимы;</li>
+<li>локальные машины и Colab.</li>
+</ul>
+<p>Launcher превращает запуск в воспроизводимый процесс, управляемый конфигурацией.</p>
+</section>
+<section id="поддержанные-варианты-inference"><h2>Поддержанные варианты inference</h2>
+<p>В текущей инфраструктуре поддерживаются четыре основных варианта inference:</p>
+<pre><code class="language-text">llama.cpp       — CPU inference
+llama.cpp CUDA  — Google Colab
+vLLM            — локальная GPU-машина
+MLX             — Mac / Apple Silicon</code></pre>
+<p>Эти варианты закрывают несколько практических сценариев.</p>
+</section>
+<section id="llama-cpp-cpu-inference"><h3>llama.cpp — CPU inference</h3>
+<p>Используется для запуска моделей на CPU. Это полезно, когда нет доступной GPU или когда нужно проверить работоспособность pipeline на простой машине.</p>
+<p>CPU inference медленный, но удобен как baseline и fallback.</p>
+</section>
+<section id="llama-cpp-cuda-google-colab"><h3>llama.cpp CUDA — Google Colab</h3>
+<p>Используется для запуска на CUDA в Google Colab. Это важный сценарий, потому что Colab позволяет получить GPU без настройки собственной машины.</p>
+<p>Для Colab особенно важен no-Docker режим, так как Docker не всегда доступен или удобен в notebook-среде.</p>
+</section>
+<section id="vllm-локальная-gpu-машина"><h3>vLLM — локальная GPU-машина</h3>
+<p>vLLM используется как вариант запуска на локальной GPU-машине. Он полезен как backend для OpenAI-compatible serving, хотя в конкретных экспериментах мог показывать себя хуже или быть менее удобным, чем другие варианты.</p>
+<p>Важно, что launcher отделяет сам benchmark pipeline от конкретного backend’а: даже если один backend подходит плохо, его можно заменить без изменения логики benchmark’а и proxy.</p>
+</section>
+<section id="mlx-mac-apple-silicon"><h3>MLX — Mac / Apple Silicon</h3>
+<p>MLX используется для запуска на Mac / Apple Silicon. Это важно для локальной разработки и экспериментов на Apple hardware.</p>
+<p>Такой режим позволяет использовать Mac как полноценную среду для проверки pipeline, не требуя CUDA.</p>
+</section>
+<section id="что-делает-launcher"><h2>Что делает launcher</h2>
+<p>Launcher последовательно запускает части pipeline:</p>
+<pre><code class="language-text">base model backend → TTS Proxy → InspectAI / GAIA</code></pre>
+<p>Затем он контролирует готовность компонентов, сохраняет логи и помогает воспроизводить запуск.</p>
+<p>Основные функции:</p>
+<ul>
+<li>последовательно запускает части pipeline;</li>
+<li>проверяет готовность endpoint’ов;</li>
+<li>чистит процессы при перезапусках;</li>
+<li>сохраняет stdout/stderr-логи всех частей в одном месте;</li>
+<li>в Colab может сохранять результаты и логи на Google Drive;</li>
+<li>использует <code>.env</code> для управления конфигурацией;</li>
+<li>позволяет переключать backend без переписывания scripts;</li>
+<li>отделяет общие параметры benchmark’а от backend-specific параметров.</li>
+</ul>
+</section>
+<section id="почему-важна-последовательность-запуска"><h2>Почему важна последовательность запуска</h2>
+<p>Компоненты зависят друг от друга.</p>
+<p>InspectAI / GAIA не должен стартовать раньше, чем поднялся proxy. Proxy не должен начинать работу без доступного base model backend. Base model backend должен сначала загрузить модель и открыть endpoint.</p>
+<p>Поэтому launcher запускает pipeline последовательно:</p>
+<pre><code class="language-text">1. Сначала base model backend
+2. Потом Test-Time Scaling Proxy
+3. Потом InspectAI / GAIA benchmark</code></pre>
+<p>Это уменьшает количество ручных ошибок и делает запуск более стабильным.</p>
+</section>
+<section id="проверка-готовности-endpoint-ов"><h2>Проверка готовности endpoint’ов</h2>
+<p>Одна из важных функций launcher’а — readiness checks.</p>
+<p>Сам факт запуска процесса ещё не означает, что компонент готов принимать запросы. Например, model backend может стартовать быстро, но модель ещё будет загружаться в память. Proxy может быть запущен, но ещё не готов отвечать на <code>/health</code> или OpenAI-compatible endpoint.</p>
+<p>Launcher проверяет готовность endpoint’ов перед переходом к следующему этапу.</p>
+<p>Это особенно важно для тяжёлых моделей и удалённых/нестабильных сред, например Google Colab.</p>
+</section>
+<section id="логи-всех-частей-pipeline"><h2>Логи всех частей pipeline</h2>
+<p>Для benchmark-экспериментов важна отладка. Если запуск падает, нужно понимать, где именно произошла ошибка:</p>
+<ul>
+<li>backend не загрузил модель;</li>
+<li>proxy не смог подключиться к backend’у;</li>
+<li>benchmark runner получил ошибку;</li>
+<li>endpoint не поднялся;</li>
+<li>закончилась память;</li>
+<li>сломалась конфигурация;</li>
+<li>техника внутри proxy вернула некорректный response.</li>
+</ul>
+<p>Поэтому launcher сохраняет stdout/stderr-логи всех частей в одном месте.</p>
+<p>Это позволяет восстановить ход запуска и понять, какая часть pipeline сломалась.</p>
+</section>
+<section id="очистка-процессов"><h2>Очистка процессов</h2>
+<p>При экспериментах часто происходят падения, зависания или повторные запуски. Если не чистить процессы, можно получить конфликт портов, старый backend, старый proxy или несколько конкурирующих процессов.</p>
+<p>Launcher чистит процессы при перезапусках и завершении работы.</p>
+<p>Это особенно полезно при многократной итерации:</p>
+<ul>
+<li>поменяли <code>.env</code>;</li>
+<li>включили новую feature;</li>
+<li>перезапустили benchmark;</li>
+<li>получили новые логи;</li>
+<li>повторили запуск с другой моделью.</li>
+</ul>
+</section>
+<section id="google-colab-и-google-drive"><h2>Google Colab и Google Drive</h2>
+<p>Google Colab важен как доступная среда для CUDA inference. Но Colab имеет особенности:</p>
+<ul>
+<li>окружение временное;</li>
+<li>процессы могут падать;</li>
+<li>runtime может быть перезапущен;</li>
+<li>файлы могут потеряться;</li>
+<li>Docker может быть недоступен или неудобен;</li>
+<li>нужно отдельно сохранять результаты.</li>
+</ul>
+<p>Поэтому launcher поддерживает сценарий, где в Colab можно сохранять результаты benchmark’а и логи на Google Drive.</p>
+<p>Это делает Colab не просто одноразовой средой, а пригодным compute backend’ом для серии экспериментов.</p>
+</section>
+<section id="docker-и-no-docker-режимы"><h2>Docker и no-Docker режимы</h2>
+<p>Проект учитывает, что разные среды требуют разных способов запуска.</p>
+<p>Docker удобен для локальной воспроизводимости, но не всегда доступен в Colab. Поэтому launcher поддерживает no-Docker сценарий.</p>
+<p>Разделение важно:</p>
+<ul>
+<li>локально можно запускать через Docker;</li>
+<li>в Colab можно запускать без Docker;</li>
+<li>scripts и <code>.env</code> остаются общей точкой управления;</li>
+<li>benchmark pipeline сохраняет одинаковую структуру.</li>
+</ul>
+</section>
+<section id="конфигурация-через-env"><h2>Конфигурация через <code>.env</code></h2>
+<p>Один из принципов проекта — конфигурация должна быть явной и сохраняемой.</p>
+<p>Минимальный пример общей конфигурации:</p>
+<pre><code class="language-env"># 1. Где запускаем base model backend
+BASE_MODEL_RUNNER_TYPE=vllm16GB
+
+# 2. Доступ к GAIA dataset
+HF_TOKEN=hf_...
+
+# 3. Параметры benchmark&#39;а
+GAIA_TASK=inspect_evals/gaia_level1
+GAIA_SPLIT=validation
+
+# 4. Какие техники включены
+FEATURE_SELF_CONSISTENCY=1
+FEATURE_CONTEXT_COMPACTION=1
+FEATURE_EXAMPLE=0</code></pre>
+<p>Этот файл управляет:</p>
+<ul>
+<li>выбором backend runner’а;</li>
+<li>доступом к GAIA dataset;</li>
+<li>benchmark task;</li>
+<li>split’ом;</li>
+<li>включёнными экспериментальными техниками.</li>
+</ul>
+</section>
+<section id="backend-specific-env"><h2>Backend-specific <code>.env</code></h2>
+<p>Общие параметры benchmark’а отделяются от backend-specific настроек.</p>
+<p>Пример backend-specific конфигурации:</p>
+<pre><code class="language-env">BASE_MODEL_API_BASE_URL=http://127.0.0.1:18081/v1
+BASE_MODEL_API_KEY=EMPTY
+BASE_MODEL_NAME=qwen3.5-9b-q4</code></pre>
+<p>Это позволяет переключать backend, не смешивая параметры модели, endpoint’а и benchmark’а в одном месте.</p>
+<p>Общий <code>.env</code> отвечает за эксперимент. Backend-specific <code>.env</code> отвечает за конкретный способ запуска базовой модели.</p>
+</section>
+<section id="воспроизводимость"><h2>Воспроизводимость</h2>
+<p>Сохранённый <code>.env</code> фактически описывает запуск.</p>
+<p>По нему можно понять:</p>
+<ul>
+<li>какой backend использовался;</li>
+<li>какая модель была подключена;</li>
+<li>какой benchmark task запускался;</li>
+<li>какой split использовался;</li>
+<li>какие техники были включены;</li>
+<li>какие параметры окружения были важны.</li>
+</ul>
+<p>Это важно для research workflow, где нужно сравнивать результаты и понимать, чем один запуск отличался от другого.</p>
+</section>
+<section id="почему-это-важно-для-small-compute"><h2>Почему это важно для small compute</h2>
+<p>Проект создавался в условиях ограниченного compute. Это влияет на архитектуру.</p>
+<p>Когда нет большого кластера GPU, приходится использовать разнородные ресурсы:</p>
+<ul>
+<li>локальный CPU;</li>
+<li>Mac / Apple Silicon;</li>
+<li>Google Colab;</li>
+<li>локальная GPU;</li>
+<li>quantized-модели;</li>
+<li>маленькие модели;</li>
+<li>разные backend’ы.</li>
+</ul>
+<p>Launcher позволяет не привязывать весь проект к одному идеальному inference setup. Вместо этого pipeline можно переносить между доступными средами.</p>
+</section>
+<section id="текущее-место-в-проекте"><h2>Текущее место в проекте</h2>
+<p>Сейчас launcher является частью единого проекта, который включает и proxy, и GAIA/InspectAI запуск.</p>
+<p>В дальнейшем launcher может быть выделен в отдельный репозиторий:</p>
+<pre><code class="language-text">gaia-experiment-launcher</code></pre>
+<p>Такой репозиторий мог бы использоваться отдельно от конкретного набора test-time техник и служить инфраструктурой для запуска GAIA/InspectAI на разных compute backend’ах.</p>
+</section>
+<section id="для-кого-этот-компонент"><h2>Для кого этот компонент</h2>
+<p>Launcher полезен для:</p>
+<ul>
+<li>локального запуска GAIA;</li>
+<li>запуска benchmark’ов на маленьких моделях;</li>
+<li>сравнения backend’ов;</li>
+<li>запуска в Google Colab;</li>
+<li>запуска на Mac / Apple Silicon;</li>
+<li>воспроизводимых evaluation runs;</li>
+<li>research-команд с ограниченным compute;</li>
+<li>быстрого переключения между моделями и inference backend’ами.</li>
+</ul>
+</section>
+<section id="итог"><h2>Итог</h2>
+<p>GAIA Experiment Launcher решает инфраструктурную часть проекта:</p>
+<ul>
+<li>запускает полный benchmark pipeline;</li>
+<li>поддерживает разные inference backend’ы;</li>
+<li>работает с разнородным compute;</li>
+<li>управляется через <code>.env</code>;</li>
+<li>сохраняет логи;</li>
+<li>проверяет готовность endpoint’ов;</li>
+<li>очищает процессы;</li>
+<li>помогает воспроизводить эксперименты.</li>
+</ul>
+<p>Главная идея: запуск benchmark’а должен быть таким же воспроизводимым и переключаемым, как конфигурация эксперимента.</p>
+</section>
+    </article>
+  </div>
+</main>
+
+  <footer class="footer">
+    <div class="container">GAIA Pipeline - инфраструктура для воспроизводимых benchmark-time экспериментов с OpenAI-compatible моделями.</div>
+  </footer>
+</body>
+</html>
