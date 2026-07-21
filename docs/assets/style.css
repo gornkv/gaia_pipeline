@@ -162,8 +162,8 @@ pre code {
 .brand-mark::after {
   content: "SL";
   position: absolute;
-  left: 9px;
-  top: 11px;
+  left: 10px;
+  top: 13px;
   color: #f8fbfc;
   font-size: 14px;
   font-weight: 850;
