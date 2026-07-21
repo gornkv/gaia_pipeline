@@ -28,17 +28,17 @@
     <div>
       <div class="eyebrow gold"><span class="pulse"></span> Project results</div>
       <h1>Полученные результаты</h1>
-      <p class="lead">Итоги экспериментов из презентации: baseline на GAIA Level 1, сравнение test-time техник, стоимость по времени и токенам, наблюдения по Budget Tracker и ограничения текущей оценки.</p>
+      <p class="lead">Итоги текущих экспериментов: baseline на GAIA Level 1, сравнение test-time техник, стоимость по времени и токенам, наблюдения по Budget Tracker и ограничения текущей оценки.</p>
     </div>
   </section>
   <div class="doc-layout">
     <aside class="side-toc" aria-label="Оглавление раздела">
       <strong>На этой странице</strong>
       <a href="#summary">Сводка</a>
-      <a href="#baseline">Baseline</a>
+      <a href="#baseline">Базовый запуск</a>
       <a href="#compare">Сравнение техник</a>
       <a href="#cost">Стоимость</a>
-      <a href="#usage">Real usage</a>
+      <a href="#usage">Реальное потребление</a>
       <a href="#budget-tracker">Budget Tracker</a>
       <a href="#work">Проделанная работа</a>
       <a href="#schemes">Схемы и таблицы</a>
@@ -48,7 +48,7 @@
     <article class="doc">
       <section id="summary">
         <h2>Сводка результатов</h2>
-        <p>Эксперимент проверяет, можно ли улучшить поведение агента на GAIA за счёт дополнительного compute на этапе inference: Best-of-N, голосование, judge/верификация, context management и budget-aware техники. Текущий практический setup: GAIA Level 1, 53 задания, небольшая модель Qwen 3.5 9B и запуск через инфраструктуру проекта.</p>
+        <p>Эксперимент проверяет, можно ли улучшить поведение агента на GAIA за счёт дополнительного compute на этапе inference: Best-of-N, голосование, judge/верификация, управление контекстом и budget-aware техники. Текущий setup: GAIA Level 1, 53 задания, небольшая модель Qwen 3.5 9B и запуск через инфраструктуру проекта.</p>
         <div class="result-grid">
           <div class="result-card"><strong>0.453</strong><span>Baseline accuracy на всех 53 задачах GAIA Level 1.</span></div>
           <div class="result-card"><strong>4.5 min</strong><span>Среднее время baseline на одну задачу.</span></div>
@@ -101,7 +101,7 @@
         </figure>
       </section>
       <section id="usage">
-        <h2>Real usage</h2>
+        <h2>Реальное потребление</h2>
         <p>Квадрант эффективности показывает trade-off между accuracy delta и overhead. STRUCTURED_NOTES выглядит как наиболее удачная lightweight-техника: она даёт положительный прирост accuracy и при этом не требует дополнительного token/time budget относительно baseline. HIAGENT также даёт прирост при низком overhead. BUDGET_TRACKER даёт максимальный прирост, но требует дополнительного compute.</p>
         <figure class="figure">
           <img src="assets/results/feature-efficiency-quadrant.png" alt="Feature efficiency quadrant">
@@ -110,7 +110,7 @@
       </section>
       <section id="budget-tracker">
         <h2>Budget Tracker</h2>
-        <p>Отдельный график показывает метрики BUDGET_TRACKER: success per task, cumulative tokens, max effective input tokens, долю context window и working time. Во втором и третьем графиках пунктирные линии отмечают context window используемой модели: baseline 256k и BUDGET_TRACKER 128k.</p>
+        <p>Отдельный график показывает метрики BUDGET_TRACKER: success per task, cumulative tokens, max effective input tokens, долю context window и рабочее время. Во втором и третьем графиках пунктирные линии отмечают context window используемой модели: baseline 256k и BUDGET_TRACKER 128k.</p>
         <figure class="figure">
           <img src="assets/results/budget-tracker-token-budget-success.png" alt="Budget tracker: token budget vs success">
           <figcaption class="figure-caption">BUDGET_TRACKER: token budget vs success, cumulative tokens, effective input, context ratio и working time.</figcaption>
@@ -119,11 +119,11 @@
       <section id="work">
         <h2>Проделанная работа</h2>
         <p>Для локального запуска был собран отдельный файл <code>localModel.sh</code>. Были добавлены ограничения на количество использования tool и время работы tool, потому что Qwen использовал очень много вызовов. Интерактивный <code>sudo</code> внутри tool calls был запрещён.</p>
-        <p>Отдельно отмечены возможные проблемы запуска: зависший tool/python, который лечится только kill; слишком большое количество tool calls, которое может требовать мультимодальной модели или новых tools; нестабильность InspectAI tools, вплоть до использования всей RAM и падения системы.</p>
+        <p>Отдельно зафиксированы операционные риски: зависающие tool/python-процессы, избыточное количество tool calls и нестабильность отдельных InspectAI tools при высоком потреблении памяти.</p>
       </section>
       <section id="schemes">
         <h2>Схемы и таблицы техник</h2>
-        <p>В презентации также были зафиксированы схемы hook-based интерфейса и литература/роли техник. Они полезны для связи полученных результатов с архитектурой proxy и выбором feature-кандидатов.</p>
+        <p>Ниже собраны схемы hook-based интерфейса и таблицы техник. Они связывают полученные результаты с архитектурой proxy и выбором feature-кандидатов.</p>
         <figure class="figure narrow">
           <img src="assets/results/technique-interface.png" alt="Technique interface code example">
           <figcaption class="figure-caption">Одна техника реализуется как отдельный класс с lifecycle hooks.</figcaption>
@@ -167,7 +167,7 @@
 </main>
 
   <footer class="footer">
-    <div class="container">GAIA Pipeline - инфраструктура для воспроизводимых benchmark-time экспериментов с OpenAI-compatible моделями.</div>
+    <div class="container">GAIA Pipeline - инфраструктура для воспроизводимых benchmark-экспериментов с OpenAI-compatible моделями.</div>
   </footer>
 </body>
 </html>

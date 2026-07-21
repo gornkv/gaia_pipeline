@@ -28,7 +28,7 @@
     <div>
       <div class="eyebrow blue"><span class="pulse"></span> Proxy / micro-framework</div>
       <h1>Test-Time Scaling Proxy: hook-based micro-framework для benchmark-экспериментов</h1>
-      <p class="lead">Полный текст раздела из <code>docs/info.md</code> с сохранением содержания и структуры.</p>
+      <p class="lead">OpenAI-compatible proxy над базовой моделью: подключает test-time scaling, context-saving и другие экспериментальные техники через lifecycle hooks.</p>
     </div>
   </section>
   <div class="doc-layout">
@@ -57,7 +57,7 @@
     <article class="doc">
       <section id="кратко"><h2>Кратко</h2>
 <p>Test-Time Scaling Proxy — это OpenAI-compatible proxy над базовой языковой моделью, предназначенный для экспериментов с test-time scaling, Best-of-N, self-consistency, context-saving и другими lightweight-техниками, которые можно встроить в benchmark loop без изменения кода самого benchmark’а.</p>
-<p>Проект решает практическую задачу: benchmark runner, например InspectAI с GAIA, обычно вызывает модель как black box. Если нужно проверить новую технику улучшения поведения модели на этапе инференса, приходится либо менять код benchmark’а, либо писать отдельную обвязку под каждую технику. Test-Time Scaling Proxy выносит эту логику в отдельный слой между benchmark’ом и базовой моделью.</p>
+<p>Проект решает практическую задачу: benchmark runner, например InspectAI с GAIA, обычно вызывает модель как внешний endpoint. Если нужно проверить новую технику улучшения поведения модели на этапе инференса, приходится либо менять код benchmark’а, либо писать отдельную обвязку под каждую технику. Test-Time Scaling Proxy выносит эту логику в отдельный слой между benchmark’ом и базовой моделью.</p>
 <p>Базовая схема:</p>
 <pre><code class="language-text">InspectAI / GAIA → Test-Time Scaling Proxy → OpenAI-compatible model backend</code></pre>
 <p>Benchmark обращается к proxy как к обычной OpenAI-compatible модели. Proxy принимает запрос, при необходимости изменяет его, передаёт его в базовую модель, получает ответ, может обработать ответ, выполнить дополнительные model calls, агрегировать результаты и вернуть benchmark’у финальный response в ожидаемом формате.</p>
@@ -113,7 +113,7 @@
 <li>техники, которые отслеживают usage, количество tool calls, длину контекста;</li>
 <li>lightweight test-time scaling техники, не требующие полного переписывания execution loop.</li>
 </ul>
-<p>Чуть менее естественно ложатся тяжёлые tree-search scaffold’ы, сложные внешние planners или production-level serving-архитектуры. Такие подходы тоже можно частично выражать через hooks, но этот proxy прежде всего создавался как удобная research-инфраструктура для benchmark-time экспериментов.</p>
+<p>Чуть менее естественно ложатся тяжёлые tree-search scaffold’ы, сложные внешние planners или production-level serving-архитектуры. Такие подходы тоже можно частично выражать через hooks, но этот proxy прежде всего создавался как удобная research-инфраструктура для benchmark-экспериментов.</p>
 </section>
 <section id="hook-based-micro-framework"><h2>Hook-based micro-framework</h2>
 <p>Внутри proxy реализован небольшой micro-framework с набором hook points. Они сгруппированы по lifecycle:</p>
@@ -305,7 +305,7 @@ Final response to benchmark</code></pre>
 </ul>
 </section>
 <section id="итог"><h2>Итог</h2>
-<p>Test-Time Scaling Proxy делает benchmark-time эксперименты проще:</p>
+<p>Test-Time Scaling Proxy делает benchmark-эксперименты проще:</p>
 <ul>
 <li>benchmark остаётся неизменным;</li>
 <li>модель остаётся обычным OpenAI-compatible backend’ом;</li>
@@ -322,7 +322,7 @@ Final response to benchmark</code></pre>
 </main>
 
   <footer class="footer">
-    <div class="container">GAIA Pipeline - инфраструктура для воспроизводимых benchmark-time экспериментов с OpenAI-compatible моделями.</div>
+    <div class="container">GAIA Pipeline - инфраструктура для воспроизводимых benchmark-экспериментов с OpenAI-compatible моделями.</div>
   </footer>
 </body>
 </html>

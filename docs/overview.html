@@ -28,7 +28,7 @@
     <div>
       <div class="eyebrow"><span class="pulse"></span> Project overview</div>
       <h1>Общая цель проекта: benchmark loop для экспериментов с LLM behavior</h1>
-      <p class="lead">Полный текст раздела из <code>docs/info.md</code> с сохранением содержания и структуры.</p>
+      <p class="lead">Общее описание проекта: зачем нужен отдельный benchmark loop, как связаны proxy и launcher, какие техники исследуются и почему архитектура ориентирована на воспроизводимые эксперименты.</p>
     </div>
   </section>
   <div class="doc-layout">
@@ -64,7 +64,7 @@
 <p>Вторая часть отвечает за воспроизводимый запуск полного pipeline на разных inference backend’ах и в разных вычислительных средах.</p>
 </section>
 <section id="главная-идея"><h2>Главная идея</h2>
-<p>Цель проекта — сделать benchmark-time эксперименты с LLM более быстрыми, модульными и воспроизводимыми.</p>
+<p>Цель проекта — сделать benchmark-эксперименты с LLM более быстрыми, модульными и воспроизводимыми.</p>
 <p>Вместо того чтобы каждый раз менять benchmark runner или писать отдельный pipeline под каждую технику, проект вводит промежуточный слой:</p>
 <pre><code class="language-text">Benchmark runner → Proxy with techniques → Base model backend</code></pre>
 <p>Этот слой позволяет экспериментировать с поведением модели на этапе выполнения benchmark’а:</p>
@@ -304,7 +304,7 @@ BASE_MODEL_NAME=qwen3.5-9b-q4</code></pre>
 </ul>
 </section>
 <section id="ограничения"><h2>Ограничения</h2>
-<p>Проект ориентирован на benchmark-time experiments, а не на production serving.</p>
+<p>Проект ориентирован на исследовательские benchmark-запуски, а не на production serving.</p>
 <p>Это значит:</p>
 <ul>
 <li>главный фокус — удобство исследования;</li>
@@ -337,7 +337,7 @@ BASE_MODEL_NAME=qwen3.5-9b-q4</code></pre>
 </main>
 
   <footer class="footer">
-    <div class="container">GAIA Pipeline - инфраструктура для воспроизводимых benchmark-time экспериментов с OpenAI-compatible моделями.</div>
+    <div class="container">GAIA Pipeline - инфраструктура для воспроизводимых benchmark-экспериментов с OpenAI-compatible моделями.</div>
   </footer>
 </body>
 </html>
