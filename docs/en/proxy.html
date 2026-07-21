@@ -51,21 +51,79 @@
         </section>
         <section id="why-proxy"><h2>Why a proxy</h2>
           <p>The goal is to make model-behavior experiments fast, reproducible, and extensible. Instead of embedding every new technique into the benchmark runner, a technique is implemented as a separate module and connected to task, model-call, and tool-call lifecycle hooks.</p>
-          <p>This is useful when many techniques need to be compared, techniques change often, some techniques require multiple internal calls, intermediate state must be preserved, the benchmark must remain unchanged, and the base model may run on different backends.</p>
+          <p>This is especially useful when:</p>
+          <ul>
+            <li>many model-behavior improvement techniques need to be compared;</li>
+            <li>techniques change often;</li>
+            <li>some techniques require several internal model calls;</li>
+            <li>intermediate state must be preserved between steps;</li>
+            <li>the benchmark must remain unchanged;</li>
+            <li>the base model may run on different backends;</li>
+            <li>the run is not production inference but a research / evaluation loop.</li>
+          </ul>
         </section>
         <section id="what-it-does"><h2>What the proxy does</h2>
-          <p>The proxy accepts OpenAI-compatible requests and itself looks like a normal model to the benchmark runner. It can accept <code>/v1/chat/completions</code>, read messages and tools, change prompts or parameters, forward requests to the model backend, process JSON responses, run multiple internal calls, aggregate answers, select the best answer, track usage and state, and return one final response.</p>
+          <p>The proxy accepts OpenAI-compatible requests and itself looks like a normal model to the benchmark runner.</p>
+          <p>In practice, the proxy can:</p>
+          <ul>
+            <li>accept a <code>/v1/chat/completions</code> request;</li>
+            <li>read messages, tools, tool calls, and request parameters;</li>
+            <li>change the prompt or parameters before sending the request to the base model;</li>
+            <li>forward the request to the OpenAI-compatible endpoint of the base model;</li>
+            <li>receive the JSON response from the model;</li>
+            <li>modify the model response before returning it to the benchmark;</li>
+            <li>run several internal model calls;</li>
+            <li>aggregate several responses;</li>
+            <li>select the best answer;</li>
+            <li>save usage, counters, intermediate results, and internal state;</li>
+            <li>return one final OpenAI-compatible response to the benchmark runner.</li>
+          </ul>
+          <p>All of this logic is hidden from the benchmark. It continues to behave as if it were working with one model.</p>
         </section>
         <section id="techniques"><h2>Supported technique classes</h2>
-          <p>The proxy is best suited for techniques that naturally fit a hook-based model: Best-of-N, self-consistency, ranked voting, adaptive Best-of-N, budget tracking, context compaction, structured notes, ReSum-like methods, prompt modification, response analysis, tool-result summarization, usage tracking, and lightweight test-time scaling.</p>
+          <p>The proxy is not meant for every possible inference architecture. It is best suited for techniques that naturally fit a hook-based model.</p>
+          <p>Good fits include:</p>
+          <ul>
+            <li>Best-of-N;</li>
+            <li>self-consistency;</li>
+            <li>ranked voting;</li>
+            <li>adaptive Best-of-N;</li>
+            <li>budget tracking;</li>
+            <li>context compaction;</li>
+            <li>structured notes;</li>
+            <li>ReSum-like techniques;</li>
+            <li>techniques that record intermediate reasoning state;</li>
+            <li>techniques that modify the prompt before a model call;</li>
+            <li>techniques that analyze the response after a model call;</li>
+            <li>techniques that compress or transform tool results;</li>
+            <li>techniques that track usage, tool-call count, and context length;</li>
+            <li>lightweight test-time scaling techniques that do not require rewriting the execution loop.</li>
+          </ul>
           <p>Heavy tree-search scaffolds, complex external planners, and production serving architectures are less natural fits, although parts of them can still be expressed through hooks.</p>
         </section>
         <section id="hooks"><h2>Hook-based micro-framework</h2>
-          <p>The proxy defines hooks for task lifecycle, model-call lifecycle, and tool-call lifecycle:</p>
-          <pre><code class="language-text">before_task_call / after_task_call
-before_chat_message / after_chat_message
-before_tool_call / after_tool_call</code></pre>
-          <p>These hooks initialize technique state, modify requests, collect usage, log responses, save intermediate variants, compress tool results, manage context, and prepare data for later aggregation.</p>
+          <p>The proxy contains a small micro-framework with hook points grouped by lifecycle.</p>
+          <h3>Task lifecycle</h3>
+          <p>These hooks are related to the start and end of a benchmark task.</p>
+          <ul>
+            <li><code>before_task_call</code></li>
+            <li><code>after_task_call</code></li>
+          </ul>
+          <p>They can initialize technique state, save the original task payload, start a new branch, collect the final answer, select the best result, or clear state after the task finishes.</p>
+          <h3>Model-call lifecycle</h3>
+          <p>These hooks are related to each call to the base model.</p>
+          <ul>
+            <li><code>before_chat_message</code></li>
+            <li><code>after_chat_message</code></li>
+          </ul>
+          <p>They can modify the request before sending it to the model, add instructions, manage message history, collect usage, log responses, save intermediate variants, and prepare data for later aggregation.</p>
+          <h3>Tool-call lifecycle</h3>
+          <p>These hooks are related to tool calls and tool results.</p>
+          <ul>
+            <li><code>before_tool_call</code></li>
+            <li><code>after_tool_call</code></li>
+          </ul>
+          <p>They can track tool calls, modify payloads, compress tool results, save observations, manage context after tool use, and implement techniques tied to tool-augmented reasoning.</p>
         </section>
         <section id="interface"><h2>Technique interface</h2>
           <pre><code class="language-python">class Technique:
@@ -77,22 +135,45 @@ before_tool_call / after_tool_call</code></pre>
     def after_task_call(self, response): ...
     def before_tool_call(self, response): ...
     def after_tool_call(self, payload): ...</code></pre>
-          <p>A simple technique can be a single file and one class. It only needs to implement the hooks it uses.</p>
+          <p>A technique does not need complex infrastructure. In the simple case, it is one file and one class that implements only the required hooks. The remaining hooks can stay empty or return data unchanged.</p>
         </section>
         <section id="state"><h2>Task-local state</h2>
-          <p>Techniques can store counters, intermediate answers, usage, model-call counts, tool-call counts, original task payloads, branch payloads, voting results, compacted context, structured notes, complexity signals, and any data needed by later hooks.</p>
+          <p>Task-local state is available between hooks. This is an important part of the architecture.</p>
+          <p>A technique can store:</p>
+          <ul>
+            <li>counters;</li>
+            <li>lists of intermediate answers;</li>
+            <li>usage;</li>
+            <li>number of model calls;</li>
+            <li>number of tool calls;</li>
+            <li>the original task payload;</li>
+            <li>the payload of the current branch;</li>
+            <li>voting results;</li>
+            <li>compacted context;</li>
+            <li>structured notes;</li>
+            <li>internal task-complexity signals;</li>
+            <li>any data needed by a later hook.</li>
+          </ul>
           <p>This enables multi-step techniques such as Best-of-N, which needs to remember branches, collected answers, remaining attempts, and the selected final answer.</p>
         </section>
         <section id="composition"><h2>Composing techniques</h2>
           <p>Multiple techniques can be enabled at once. Active techniques form a linear middleware chain:</p>
           <pre><code class="language-text">request/response -> Technique A hook -> Technique B hook -> Technique C hook</code></pre>
           <p>For example, one technique can track budget, another can compact context, a third can run Best-of-N, a fourth can collect structured notes, and a fifth can select the final answer.</p>
+          <p>This composition does not require rewriting the benchmark runner and does not require merging all techniques into one monolithic module.</p>
         </section>
         <section id="feature-flags"><h2>Feature flags</h2>
           <pre><code class="language-env">FEATURE_SELF_CONSISTENCY=1
 FEATURE_CONTEXT_COMPACTION=1
 FEATURE_EXAMPLE=0</code></pre>
-          <p>Feature flags make it easy to enable and disable techniques, save experiment configuration, reproduce runs, and compare technique sets.</p>
+          <p>This has several advantages:</p>
+          <ul>
+            <li>techniques can be enabled and disabled quickly;</li>
+            <li>experiment configuration can be saved;</li>
+            <li>a run can be reproduced later;</li>
+            <li>several technique sets can be compared;</li>
+            <li>the same benchmark can be run with different experimental settings.</li>
+          </ul>
         </section>
         <section id="best-of-n"><h2>Best-of-N example</h2>
           <pre><code class="language-text">Benchmark request
@@ -107,24 +188,99 @@ Aggregation / voting / selection
         ↓
 Final response to benchmark</code></pre>
           <p>The benchmark receives one final answer and does not need to know that several internal attempts were made.</p>
+          <p>This technique needs:</p>
+          <ul>
+            <li>saving the original task payload;</li>
+            <li>running several branches;</li>
+            <li>isolating branch histories;</li>
+            <li>collecting answers;</li>
+            <li>selecting the final answer;</li>
+            <li>returning one response in OpenAI-compatible format.</li>
+          </ul>
         </section>
         <section id="context-saving"><h2>Context-saving example</h2>
-          <p>In GAIA-like tasks, long tool results and accumulated history can become a problem for smaller models. The proxy can compress tool results, extract structured notes, remove irrelevant history, store compact task state, track context growth, and add a short state summary instead of full history.</p>
+          <p>In GAIA-like tasks, the model can use tools, receive long tool results, and gradually accumulate context. For small models or models with limited context, this becomes a problem.</p>
+          <p>The proxy can implement context-saving techniques that:</p>
+          <ul>
+            <li>compress long tool results;</li>
+            <li>extract structured notes;</li>
+            <li>remove irrelevant history fragments;</li>
+            <li>store compact task state;</li>
+            <li>track context growth;</li>
+            <li>add a short state summary to the prompt instead of the full history.</li>
+          </ul>
+          <p>This is especially important under limited compute, when using small local models, quantized models, or models with a small context window.</p>
         </section>
         <section id="not-just-wrapper"><h2>Why this is not just a wrapper</h2>
-          <p>A normal model wrapper usually only forwards requests. Test-Time Scaling Proxy adds a research-oriented lifecycle layer before and after tasks, model calls, tool calls, and tool results. This turns it into a micro-framework for benchmark experiments.</p>
+          <p>A normal model wrapper usually only forwards requests. Test-Time Scaling Proxy adds a research-oriented lifecycle layer.</p>
+          <p>It does not simply pass the request to the backend; it creates intervention points in the benchmark loop:</p>
+          <ul>
+            <li>before the task;</li>
+            <li>before the model call;</li>
+            <li>after the model call;</li>
+            <li>before the tool call;</li>
+            <li>after the tool result;</li>
+            <li>after the task finishes.</li>
+          </ul>
+          <p>This turns the proxy into a micro-framework for experiments, not just an HTTP proxy.</p>
         </section>
         <section id="responsibility"><h2>Responsibility boundary</h2>
-          <p>The benchmark runner chooses the benchmark, loads tasks, runs scoring and tools, and evaluates results. The base model backend loads the model and performs inference. The proxy owns intervention points, techniques, state, extra calls, aggregation, context-saving, and OpenAI-compatible behavior toward the benchmark.</p>
+          <p>Test-Time Scaling Proxy does not replace the benchmark runner and does not replace the model backend.</p>
+          <p>The benchmark runner is responsible for:</p>
+          <ul>
+            <li>choosing the benchmark;</li>
+            <li>loading tasks;</li>
+            <li>scoring;</li>
+            <li>the execution loop;</li>
+            <li>tools;</li>
+            <li>evaluating the result.</li>
+          </ul>
+          <p>The base model backend is responsible for:</p>
+          <ul>
+            <li>loading the model;</li>
+            <li>inference;</li>
+            <li>the OpenAI-compatible endpoint;</li>
+            <li>backend-specific behavior: llama.cpp, vLLM, MLX, and so on.</li>
+          </ul>
+          <p>Test-Time Scaling Proxy is responsible for:</p>
+          <ul>
+            <li>experimental intervention points;</li>
+            <li>connecting techniques;</li>
+            <li>task-local state;</li>
+            <li>additional model calls;</li>
+            <li>aggregation;</li>
+            <li>context-saving;</li>
+            <li>preserving the OpenAI-compatible interface for the benchmark.</li>
+          </ul>
         </section>
         <section id="place-in-project"><h2>Place in the project</h2>
           <p>Today the micro-framework is part of a unified GAIA/InspectAI experiment project. Later it can be extracted into a reusable repository such as <code>tts-proxy-framework</code>.</p>
+          <p>Such a repository could be used not only for GAIA, but for any benchmark or evaluation loop that can call an OpenAI-compatible model endpoint.</p>
         </section>
         <section id="audience"><h2>Audience</h2>
-          <p>The component is useful for test-time scaling researchers, benchmark infrastructure developers, teams comparing inference-time techniques, local-LLM users, small-model experimenters, and anyone who wants to separate benchmark code from experimental techniques.</p>
+          <p>The component is useful for:</p>
+          <ul>
+            <li>test-time scaling researchers;</li>
+            <li>benchmark infrastructure developers;</li>
+            <li>teams comparing inference-time techniques;</li>
+            <li>people working with local LLMs;</li>
+            <li>people experimenting with small models;</li>
+            <li>people who want to separate benchmark code from experimental techniques;</li>
+            <li>people who want to prototype new scaffolds on top of OpenAI-compatible models quickly.</li>
+          </ul>
         </section>
         <section id="summary"><h2>Summary</h2>
-          <p>Test-Time Scaling Proxy keeps the benchmark and model backend unchanged while techniques are added as modules, hooks provide lifecycle intervention points, task-local state enables multi-step methods, and feature flags make experiments reproducible.</p>
+          <p>Test-Time Scaling Proxy makes benchmark experiments simpler:</p>
+          <ul>
+            <li>the benchmark remains unchanged;</li>
+            <li>the model remains a normal OpenAI-compatible backend;</li>
+            <li>techniques are added as separate modules;</li>
+            <li>hooks provide intervention points in the task lifecycle;</li>
+            <li>task-local state enables multi-step techniques;</li>
+            <li>feature flags make experiments reproducible;</li>
+            <li>different techniques can be combined in one run.</li>
+          </ul>
+          <p>The main idea is to separate research techniques from the benchmark runner and model backend by turning them into a pluggable layer between the two.</p>
         </section>
       </article>
     </div>

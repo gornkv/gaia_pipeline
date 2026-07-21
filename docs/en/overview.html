@@ -55,10 +55,35 @@
         <section id="main-idea"><h2>Main idea</h2>
           <p>The goal is to make LLM benchmark experiments faster, more modular, and reproducible. Instead of modifying the benchmark runner for every technique, the project introduces an intermediate layer:</p>
           <pre><code class="language-text">Benchmark runner -> Proxy with techniques -> Base model backend</code></pre>
-          <p>This layer can change prompts and requests, inspect responses, run extra model calls, aggregate answers, enable Best-of-N, save intermediate state, compact context, track tool calls, collect usage, combine techniques, and preserve run configuration.</p>
+          <p>This layer makes it possible to experiment with model behavior during benchmark execution:</p>
+          <ul>
+            <li>change the prompt;</li>
+            <li>change the request;</li>
+            <li>analyze the response;</li>
+            <li>run additional model calls;</li>
+            <li>aggregate answers;</li>
+            <li>enable Best-of-N;</li>
+            <li>save intermediate state;</li>
+            <li>compact context;</li>
+            <li>track tool calls;</li>
+            <li>collect usage;</li>
+            <li>combine several techniques;</li>
+            <li>preserve run configuration.</li>
+          </ul>
         </section>
         <section id="why-not-change-benchmark"><h2>Why not change the benchmark</h2>
-          <p>The benchmark runner should stay clean. If every technique is embedded directly into benchmark code, the benchmark becomes harder to maintain, techniques become implementation-specific, comparisons become harder, and experiment code gets mixed with scoring and task execution.</p>
+          <p>The benchmark runner should stay clean.</p>
+          <p>If every technique is embedded directly into benchmark code, several problems appear:</p>
+          <ul>
+            <li>the benchmark becomes harder to maintain;</li>
+            <li>techniques become tied to a specific benchmark implementation;</li>
+            <li>techniques become harder to compare;</li>
+            <li>turning one technique off and another on becomes harder;</li>
+            <li>the approach becomes harder to transfer to another benchmark;</li>
+            <li>results become harder to reproduce;</li>
+            <li>experiment code gets mixed with scoring and task execution.</li>
+          </ul>
+          <p>That is why the project moves experimental logic into the proxy layer.</p>
           <p>The proxy owns experimental logic. The benchmark runs tasks and scores answers. The backend loads the model and serves responses.</p>
         </section>
         <section id="practical-stack"><h2>Practical stack</h2>
@@ -72,30 +97,112 @@ OpenAI-compatible model backend
         ↓
 Local / Colab / Mac / GPU inference</code></pre>
           <p>For InspectAI, the proxy looks like a normal model. For the proxy, the base model looks like a normal OpenAI-compatible endpoint.</p>
+          <p>Both sides remain simple:</p>
+          <ul>
+            <li>the benchmark does not know about techniques;</li>
+            <li>the base model backend does not know about the benchmark;</li>
+            <li>the proxy connects them and adds experimental logic.</li>
+          </ul>
         </section>
         <section id="openai-compatible"><h2>Why OpenAI-compatible API matters</h2>
-          <p>The OpenAI-compatible API is a practical standard for local and remote inference backends. llama.cpp, vLLM, MLX-based serving, and other model servers can expose <code>/v1/chat/completions</code>.</p>
+          <p>The OpenAI-compatible API is a practical standard for local and remote inference backends.</p>
+          <p>Many backends can expose <code>/v1/chat/completions</code>:</p>
+          <ul>
+            <li>llama.cpp;</li>
+            <li>vLLM;</li>
+            <li>MLX-based serving;</li>
+            <li>other local or remote model servers.</li>
+          </ul>
           <p>If a benchmark runner can call an OpenAI-compatible endpoint, the proxy can be inserted between the benchmark and the model without deep integration work.</p>
         </section>
         <section id="research-directions"><h2>Research directions</h2>
-          <p>The project studies test-time techniques that change model behavior through inference organization rather than training. Examples include Best-of-N, self-consistency, adaptive sampling, ranked voting, context compaction, structured notes, budget-aware reasoning, tool-result summarization, branch isolation, final-answer selection, and intermediate state tracking.</p>
+          <p>The project studies test-time techniques that change model behavior through inference organization rather than training.</p>
+          <p>Example directions:</p>
+          <ul>
+            <li>Best-of-N;</li>
+            <li>self-consistency;</li>
+            <li>adaptive sampling;</li>
+            <li>ranked voting;</li>
+            <li>context compaction;</li>
+            <li>structured notes;</li>
+            <li>budget-aware reasoning;</li>
+            <li>tool-result summarization;</li>
+            <li>branch isolation;</li>
+            <li>final-answer selection;</li>
+            <li>intermediate state tracking.</li>
+          </ul>
+          <p>The general idea is not to change model weights, but to improve how the model is called, how context is stored, how intermediate results are processed, and how the final answer is selected.</p>
         </section>
         <section id="test-time-scaling"><h2>Test-time scaling</h2>
-          <p>Test-time scaling tries to improve answer quality by spending more compute at inference time. The simplest version is to make several attempts and choose the best one. More advanced variants run independent reasoning branches, ask the model to verify its answer, use voting, estimate task difficulty, or allocate extra calls only to harder tasks.</p>
+          <p>Test-time scaling tries to improve answer quality by spending more compute at inference time.</p>
+          <p>The simplest example is to make several attempts and choose the best one.</p>
+          <p>More advanced variants:</p>
+          <ul>
+            <li>run several independent reasoning branches;</li>
+            <li>ask the model to verify its own answer;</li>
+            <li>use voting;</li>
+            <li>estimate task difficulty and choose the compute budget adaptively;</li>
+            <li>save intermediate conclusions;</li>
+            <li>use extra model calls only for difficult tasks.</li>
+          </ul>
+          <p>The project is not limited to a strict definition of test-time scaling. Context-saving techniques also matter because real compute is limited and models can be small.</p>
         </section>
         <section id="context-optimization"><h2>Context optimization</h2>
-          <p>In GAIA-like tasks, history can grow quickly: system prompt, task, reasoning, tool calls, tool results, observations, retries, and branch histories. For small-context models this can become a bottleneck.</p>
-          <p>The project supports techniques that compress long tool results, extract facts, save structured notes, remove irrelevant history, isolate branches, and manage accumulated messages.</p>
+          <p>Context optimization is an important part of the project.</p>
+          <p>In GAIA-like tasks, history can grow quickly:</p>
+          <ul>
+            <li>system prompt;</li>
+            <li>user task;</li>
+            <li>assistant reasoning;</li>
+            <li>tool calls;</li>
+            <li>tool results;</li>
+            <li>intermediate observations;</li>
+            <li>retries;</li>
+            <li>branch histories.</li>
+          </ul>
+          <p>For models with a small context window, this becomes a bottleneck. Even if the model could solve the task, it can lose important information, overflow the context, or degrade on a long history.</p>
+          <p>The project therefore supports techniques that:</p>
+          <ul>
+            <li>compress long tool results;</li>
+            <li>extract facts;</li>
+            <li>save structured notes;</li>
+            <li>remove irrelevant history;</li>
+            <li>isolate branches;</li>
+            <li>reduce context between attempts;</li>
+            <li>manage accumulated messages;</li>
+            <li>help small models work more effectively on benchmark tasks.</li>
+          </ul>
         </section>
         <section id="small-models"><h2>Why small models matter</h2>
-          <p>The project assumes realistic compute constraints: small open-source models, quantized models, local CPU, Apple Silicon, Google Colab, one local GPU, limited context, limited memory, and slower inference. In this setting, inference-time techniques can improve usefulness without training or heavy infrastructure.</p>
+          <p>The project reflects a practical situation: access to large closed models or a large GPU cluster is not always available.</p>
+          <p>Commonly available resources are:</p>
+          <ul>
+            <li>small open-source models;</li>
+            <li>quantized models;</li>
+            <li>local CPU;</li>
+            <li>Mac / Apple Silicon;</li>
+            <li>Google Colab;</li>
+            <li>one local GPU;</li>
+            <li>limited context;</li>
+            <li>limited memory;</li>
+            <li>slow inference.</li>
+          </ul>
+          <p>In this setting, techniques that improve the usefulness of the model without training and without heavy infrastructure are especially important.</p>
         </section>
         <section id="heterogeneous-compute"><h2>Heterogeneous compute</h2>
           <pre><code class="language-text">llama.cpp       — CPU inference
 llama.cpp CUDA  — Google Colab
 vLLM            — local GPU machine
 MLX             — Mac / Apple Silicon</code></pre>
-          <p>The backend is selected through configuration. The benchmark runner does not depend on the backend, the proxy does not depend on a specific model, and the launcher knows how to start the chosen pipeline.</p>
+          <p>This affects the whole design:</p>
+          <ul>
+            <li>the backend is selected through configuration;</li>
+            <li>the benchmark runner does not depend on the backend;</li>
+            <li>the proxy does not depend on a specific model;</li>
+            <li>the launcher knows how to start the selected pipeline;</li>
+            <li>results and logs are saved separately;</li>
+            <li>the run can be reproduced.</li>
+          </ul>
         </section>
         <section id="modularity"><h2>Project modularity</h2>
           <p>The project is split into two logical parts. The proxy / micro-framework handles experimental techniques. The runner / launcher handles reproducible experiment execution.</p>
@@ -106,7 +213,24 @@ MLX             — Mac / Apple Silicon</code></pre>
           <p>The project currently lives in one repository because the proxy, launcher, benchmark runner, and backend are tightly connected during active development. After stabilization, the infrastructure can be split into reusable components: <code>tts-proxy-framework</code> and <code>gaia-experiment-launcher</code>.</p>
         </section>
         <section id="project-output"><h2>Project output</h2>
-          <p>The output is not a single benchmark score. It is infrastructure that makes scores quick to produce and compare: a unified benchmark pipeline, a proxy layer for test-time techniques, hooks, task-local state, feature flags, Best-of-N support, context-saving techniques, launcher support for different backends, Colab support, Apple Silicon support, CPU/CUDA scenarios, reproducible env configuration, centralized logs, and a path to reusable components.</p>
+          <p>The output is not a single benchmark score. It is infrastructure that makes such scores quick to produce and compare.</p>
+          <p>The project contribution includes:</p>
+          <ul>
+            <li>a unified benchmark pipeline;</li>
+            <li>a proxy layer for test-time techniques;</li>
+            <li>a hook-based micro-framework;</li>
+            <li>task-local state;</li>
+            <li>feature flags;</li>
+            <li>support for Best-of-N and related techniques;</li>
+            <li>context-saving capabilities;</li>
+            <li>a launcher for different backends;</li>
+            <li>Colab support;</li>
+            <li>Mac / Apple Silicon support;</li>
+            <li>CPU / CUDA scenarios;</li>
+            <li>reproducible <code>.env</code> configuration;</li>
+            <li>centralized logs;</li>
+            <li>a path toward reusable components.</li>
+          </ul>
         </section>
         <section id="workflow"><h2>Typical experiment</h2>
           <pre><code class="language-text">1. Choose a backend
@@ -133,15 +257,49 @@ FEATURE_EXAMPLE=0</code></pre>
           <pre><code class="language-env">BASE_MODEL_API_BASE_URL=http://127.0.0.1:18081/v1
 BASE_MODEL_API_KEY=EMPTY
 BASE_MODEL_NAME=qwen3.5-9b-q4</code></pre>
+          <p>This structure makes the run understandable: one file describes the experiment, and another describes the concrete backend.</p>
         </section>
         <section id="audience"><h2>Audience</h2>
-          <p>The project is intended for LLM behavior researchers, benchmark teams, test-time scaling developers, users of local open-source models, teams running GAIA without closed APIs, and people working under constrained compute.</p>
+          <p>The project is intended for:</p>
+          <ul>
+            <li>LLM behavior researchers;</li>
+            <li>teams working with benchmarks;</li>
+            <li>developers of test-time scaling techniques;</li>
+            <li>users of local open-source models;</li>
+            <li>people who want to run GAIA without closed APIs;</li>
+            <li>people working with limited compute;</li>
+            <li>people comparing inference-time techniques;</li>
+            <li>people who want to separate benchmark code from experimental code.</li>
+          </ul>
         </section>
         <section id="limitations"><h2>Limitations</h2>
-          <p>The focus is research and evaluation, not production serving. Extra model calls, experimental logic, detailed logs, and flexibility are expected. Latency is not the only optimization target.</p>
+          <p>The project is aimed at research benchmark runs, not production serving.</p>
+          <p>This means:</p>
+          <ul>
+            <li>the main focus is research convenience;</li>
+            <li>additional model calls are acceptable;</li>
+            <li>experimental logic is acceptable;</li>
+            <li>reproducibility matters;</li>
+            <li>logs matter;</li>
+            <li>flexibility matters;</li>
+            <li>latency is not the only primary criterion.</li>
+          </ul>
+          <p>The project also does not promise support for every possible scaffold. It is best suited for techniques that can be expressed through lifecycle hooks and a middleware chain.</p>
         </section>
         <section id="summary"><h2>Summary</h2>
-          <p>The project creates practical infrastructure for adding, running, and comparing model-behavior techniques without rewriting the benchmark runner or locking the system to one inference backend.</p>
+          <p>The project creates practical infrastructure for LLM experiments inside a benchmark loop.</p>
+          <p>It combines:</p>
+          <ul>
+            <li>an OpenAI-compatible proxy;</li>
+            <li>a hook-based micro-framework;</li>
+            <li>feature-based technique activation;</li>
+            <li>task-local state;</li>
+            <li>context-saving and test-time scaling approaches;</li>
+            <li>a launcher for GAIA / InspectAI;</li>
+            <li>support for different inference backends;</li>
+            <li>reproducible configuration.</li>
+          </ul>
+          <p>The main idea is to make new model-behavior techniques easy to add, run, and compare without rewriting the benchmark runner and without binding the system to one inference backend.</p>
         </section>
       </article>
     </div>
