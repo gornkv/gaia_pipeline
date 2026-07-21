@@ -3,17 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Оглавление Scaling Laws</title>
-  <meta name="description" content="Документация Scaling Laws: Test-Time Scaling Proxy, GAIA Experiment Launcher и результаты benchmark-экспериментов.">
+  <title>Оглавление harness-scaling</title>
+  <meta name="description" content="Документация harness-scaling: Test-Time Scaling Proxy, GAIA Experiment Launcher и результаты benchmark-экспериментов.">
   <link rel="icon" href="../assets/favicon-sl.svg?v=20260721-sl" type="image/svg+xml">
   <link rel="stylesheet" href="../assets/style.css?v=20260721-sl">
 </head>
 <body>
   <nav class="nav" aria-label="Основная навигация">
     <div class="nav-inner">
-      <a class="brand" href="index.html" aria-label="Scaling Laws">
+      <a class="brand" href="index.html" aria-label="harness-scaling">
         <span class="brand-mark" aria-hidden="true"></span>
-        <span>Scaling Laws</span>
+        <span>harness-scaling</span>
       </a>
       <div class="links">
           <a href="index.html" aria-current="page">Оглавление</a>
@@ -27,7 +27,7 @@
   <section class="hero">
     <div>
       <div class="eyebrow"><span class="pulse"></span> Главная</div>
-      <h1>Scaling Laws</h1>
+      <h1>harness-scaling</h1>
       <p class="lead">Проект собирает в один reproducible loop идею эксперимента, уже полученные результаты и технический слой, который позволяет повторять запуски на разном compute.</p>
       <div class="hero-actions">
         <a class="button" href="overview.html">Начать с общей цели</a>
@@ -89,20 +89,6 @@ GAIA Benchmark
           <img src="../assets/results/baseline-all-53-tasks.png" alt="Baseline на 53 задачах: accuracy, time и token usage per task">
           <figcaption class="figure-caption">Baseline по всем 53 задачам GAIA Level 1 с correctness, временем и token usage. Пунктирные линии показывают средние значения.</figcaption>
         </figure>
-      </div>
-    </div>
-  </section>
-
-  <section class="section">
-    <div class="container">
-      <div class="section-head">
-        <h2>Быстрые ссылки</h2>
-        <p>Короткие переходы к местам, которые чаще всего нужны при обсуждении архитектуры, настройке запуска и сверке выводов.</p>
-      </div>
-      <div class="grid three">
-        <article class="card"><span class="tag blue">Architecture</span><h3><a href="overview.html#практическая-связка">Практическая связка</a></h3><p>GAIA, InspectAI, proxy и OpenAI-compatible backend в одном benchmark loop.</p></article>
-        <article class="card"><span class="tag gold">Config</span><h3><a href="architecture.html#launcher-конфигурация-через-env">Конфигурация через env</a></h3><p>Backend runner, HF token, GAIA task, split и feature flags.</p></article>
-        <article class="card"><span class="tag gold">Results</span><h3><a href="results.html">Полученные результаты</a></h3><p>Базовый запуск, сравнение техник, стоимость запусков, графики эффективности и выводы.</p></article>
       </div>
     </div>
   </section>

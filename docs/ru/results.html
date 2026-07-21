@@ -3,17 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Полученные результаты Scaling Laws</title>
-  <meta name="description" content="Документация Scaling Laws: Test-Time Scaling Proxy, GAIA Experiment Launcher и результаты benchmark-экспериментов.">
+  <title>Полученные результаты harness-scaling</title>
+  <meta name="description" content="Документация harness-scaling: Test-Time Scaling Proxy, GAIA Experiment Launcher и результаты benchmark-экспериментов.">
   <link rel="icon" href="../assets/favicon-sl.svg?v=20260721-sl" type="image/svg+xml">
   <link rel="stylesheet" href="../assets/style.css?v=20260721-sl">
 </head>
 <body>
   <nav class="nav" aria-label="Основная навигация">
     <div class="nav-inner">
-      <a class="brand" href="index.html" aria-label="Scaling Laws">
+      <a class="brand" href="index.html" aria-label="harness-scaling">
         <span class="brand-mark" aria-hidden="true"></span>
-        <span>Scaling Laws</span>
+        <span>harness-scaling</span>
       </a>
       <div class="links">
           <a href="index.html">Оглавление</a>
@@ -39,7 +39,6 @@
       <a href="#cost">Стоимость</a>
       <a href="#usage">Реальное потребление</a>
       <a href="#budget-tracker">Budget Tracker</a>
-      <a href="#work">Проделанная работа</a>
       <a href="#schemes">Схемы и таблицы</a>
       <a href="#limits">Ограничения</a>
       <a href="#notes">Выводы</a>
@@ -114,11 +113,6 @@
           <img src="../assets/results/budget-tracker-token-budget-success.png" alt="Budget tracker: token budget vs success">
           <figcaption class="figure-caption">BUDGET_TRACKER с token budget vs success, cumulative tokens, effective input, context ratio и working time.</figcaption>
         </figure>
-      </section>
-      <section id="work">
-        <h2>Проделанная работа</h2>
-        <p>Для локального запуска был собран отдельный файл <code>localModel.sh</code>. Были добавлены ограничения на количество использования tool и время работы tool, потому что Qwen использовал очень много вызовов. Интерактивный <code>sudo</code> внутри tool calls был запрещён.</p>
-        <p>Отдельно зафиксированы операционные риски: зависающие tool/python-процессы, избыточное количество tool calls и нестабильность отдельных InspectAI tools при высоком потреблении памяти.</p>
       </section>
       <section id="schemes">
         <h2>Схемы и таблицы техник</h2>

@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Experiment Results Scaling Laws</title>
-  <meta name="description" content="Scaling Laws experiment results: baseline, technique comparison, cost, and Budget Tracker analysis.">
+  <title>Experiment Results harness-scaling</title>
+  <meta name="description" content="harness-scaling experiment results: baseline, technique comparison, cost, and Budget Tracker analysis.">
   <link rel="icon" href="assets/favicon-sl.svg?v=20260721-sl" type="image/svg+xml">
   <link rel="stylesheet" href="assets/style.css?v=20260721-sl">
 </head>
 <body>
   <nav class="nav" aria-label="Main navigation">
     <div class="nav-inner">
-      <a class="brand" href="index.html" aria-label="Scaling Laws"><span class="brand-mark" aria-hidden="true"></span><span>Scaling Laws</span></a>
+      <a class="brand" href="index.html" aria-label="harness-scaling"><span class="brand-mark" aria-hidden="true"></span><span>harness-scaling</span></a>
       <div class="links">
         <a href="index.html">Overview</a>
         <a href="overview.html">About</a>
@@ -36,7 +36,6 @@
         <a href="#cost">Cost</a>
         <a href="#usage">Real usage</a>
         <a href="#budget-tracker">Budget Tracker</a>
-        <a href="#work">Work completed</a>
         <a href="#schemes">Schemes and tables</a>
         <a href="#limits">Limitations</a>
         <a href="#notes">Conclusions</a>
@@ -85,10 +84,6 @@
         <section id="budget-tracker"><h2>Budget Tracker</h2>
           <p>The Budget Tracker chart shows success per task, cumulative tokens, max effective input tokens, context-window share, and working time. Dashed lines in the middle charts mark model context windows: baseline 256k and BUDGET_TRACKER 128k.</p>
           <figure class="figure"><img src="assets/results/budget-tracker-token-budget-success.png" alt="Budget tracker: token budget vs success"><figcaption class="figure-caption">BUDGET_TRACKER with token budget vs success, cumulative tokens, effective input, context ratio, and working time.</figcaption></figure>
-        </section>
-        <section id="work"><h2>Work completed</h2>
-          <p>A separate <code>localModel.sh</code> was prepared for local runs. Limits were added for tool usage and tool runtime because Qwen made many tool calls. Interactive <code>sudo</code> inside tool calls was disabled.</p>
-          <p>Operational risks were recorded: hanging tool/python processes, excessive tool calls, and instability of some InspectAI tools under high memory usage.</p>
         </section>
         <section id="schemes"><h2>Schemes and tables</h2>
           <p>The diagrams below connect the results with the proxy architecture and the technique selection process.</p>
