@@ -28,7 +28,7 @@
     <div>
       <div class="eyebrow"><span class="pulse"></span> Главная</div>
       <h1>GAIA Pipeline</h1>
-      <p class="lead">Документация проекта из <code>docs/info.md</code>: Test-Time Scaling Proxy, GAIA Experiment Launcher и общая цель benchmark loop для экспериментов с LLM behavior. Главная страница не сжимает материал, а ведет к полным тематическим страницам.</p>
+      <p class="lead">Инфраструктура для воспроизводимых экспериментов с поведением LLM в benchmark loop: OpenAI-compatible proxy для test-time техник, launcher для GAIA / InspectAI и результаты запусков на разнородном compute.</p>
       <div class="hero-actions">
         <a class="button" href="overview.html">Начать с общей цели</a>
         <a class="button secondary" href="results.html">Раздел результатов</a>
@@ -48,8 +48,8 @@ GAIA Benchmark
   <section class="section alt">
     <div class="container">
       <div class="section-head">
-        <h2>Развитое оглавление</h2>
-        <p>Каждый блок ниже ведет на отдельную страницу и включает все подразделы, перенесенные из исходного документа.</p>
+        <h2>Разделы проекта</h2>
+        <p>Карта документации: общая архитектура, proxy micro-framework, launcher для запусков и результаты экспериментов.</p>
       </div>
       <div class="toc">
         <article class="toc-card">
@@ -58,7 +58,6 @@ GAIA Benchmark
   <ol>
     <li><a href="overview.html#кратко">Кратко</a></li>
             <li><a href="overview.html#главная-идея">Главная идея</a></li>
-            <li><a href="overview.html#почему-выбран-benchmark-loop">Почему выбран benchmark loop</a></li>
             <li><a href="overview.html#почему-не-менять-сам-benchmark">Почему не менять сам benchmark</a></li>
             <li><a href="overview.html#практическая-связка">Практическая связка</a></li>
             <li><a href="overview.html#почему-openai-compatible-interface-важен">Почему OpenAI-compatible interface важен</a></li>
@@ -70,10 +69,6 @@ GAIA Benchmark
             <li><a href="overview.html#модульность-проекта">Модульность проекта</a></li>
             <li style="margin-left: 18px"><a href="overview.html#1-proxy-micro-framework">1. Proxy / micro-framework</a></li>
             <li style="margin-left: 18px"><a href="overview.html#2-runner-launcher">2. Runner / launcher</a></li>
-            <li><a href="overview.html#почему-сейчас-проект-единый">Почему сейчас проект единый</a></li>
-            <li><a href="overview.html#возможное-будущее-разделение">Возможное будущее разделение</a></li>
-            <li style="margin-left: 18px"><a href="overview.html#tts-proxy-framework">tts-proxy-framework</a></li>
-            <li style="margin-left: 18px"><a href="overview.html#gaia-experiment-launcher">gaia-experiment-launcher</a></li>
             <li><a href="overview.html#что-считается-результатом-проекта">Что считается результатом проекта</a></li>
             <li><a href="overview.html#как-выглядит-типовой-эксперимент">Как выглядит типовой эксперимент</a></li>
             <li><a href="overview.html#пример-конфигурации">Пример конфигурации</a></li>
@@ -84,7 +79,7 @@ GAIA Benchmark
 </article>
 
 <article class="toc-card">
-  <span class="tag">Proxy / micro-framework</span>
+  <span class="tag blue">Proxy / micro-framework</span>
   <h3><a href="proxy.html">Test-Time Scaling Proxy: hook-based micro-framework для benchmark-экспериментов</a></h3>
   <ol>
     <li><a href="proxy.html#кратко">Кратко</a></li>
@@ -110,7 +105,7 @@ GAIA Benchmark
 </article>
 
 <article class="toc-card">
-  <span class="tag">Runner / infrastructure</span>
+  <span class="tag blue">Runner / infrastructure</span>
   <h3><a href="launcher.html">GAIA Experiment Launcher: запуск benchmark pipeline на разнородном compute</a></h3>
   <ol>
     <li><a href="launcher.html#кратко">Кратко</a></li>
@@ -140,13 +135,16 @@ GAIA Benchmark
 </article>
 
 <article class="toc-card">
-  <span class="tag red">Project results</span>
+  <span class="tag gold">Project results</span>
   <h3><a href="results.html">Полученные результаты</a></h3>
   <ol>
     <li><a href="results.html#summary">Сводка результатов</a></li>
-            <li><a href="results.html#runs">Таблица запусков</a></li>
             <li><a href="results.html#compare">Сравнение техник</a></li>
-            <li><a href="results.html#artifacts">Артефакты</a></li>
+            <li><a href="results.html#cost">Стоимость</a></li>
+            <li><a href="results.html#usage">Real usage</a></li>
+            <li><a href="results.html#budget-tracker">Budget Tracker</a></li>
+            <li><a href="results.html#schemes">Схемы и таблицы</a></li>
+            <li><a href="results.html#limits">Ограничения</a></li>
             <li><a href="results.html#notes">Выводы</a></li>
   </ol>
 </article>
@@ -164,7 +162,7 @@ GAIA Benchmark
       <div class="grid three">
         <article class="card"><span class="tag blue">Architecture</span><h3><a href="overview.html#практическая-связка">Практическая связка</a></h3><p>GAIA, InspectAI, proxy и OpenAI-compatible backend в одном benchmark loop.</p></article>
         <article class="card"><span class="tag gold">Config</span><h3><a href="launcher.html#конфигурация-через-env">Конфигурация через .env</a></h3><p>Backend runner, HF token, GAIA task, split и feature flags.</p></article>
-        <article class="card"><span class="tag red">Results</span><h3><a href="results.html">Полученные результаты</a></h3><p>Заготовка под score, таблицы runs, ссылки на InspectAI logs и выводы.</p></article>
+        <article class="card"><span class="tag gold">Results</span><h3><a href="results.html">Полученные результаты</a></h3><p>Заготовка под score, таблицы runs, ссылки на InspectAI logs и выводы.</p></article>
       </div>
     </div>
   </section>

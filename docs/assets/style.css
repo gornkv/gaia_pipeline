@@ -161,6 +161,24 @@ pre code {
   font-weight: 760;
 }
 
+.eyebrow.blue {
+  color: var(--blue);
+}
+
+.eyebrow.blue .pulse {
+  background: var(--blue);
+  box-shadow: 0 0 0 5px rgba(45, 108, 223, .12);
+}
+
+.eyebrow.gold {
+  color: var(--gold);
+}
+
+.eyebrow.gold .pulse {
+  background: var(--gold);
+  box-shadow: 0 0 0 5px rgba(155, 107, 22, .14);
+}
+
 .pulse {
   width: 8px;
   height: 8px;
@@ -520,6 +538,83 @@ p {
   font-size: 13px;
 }
 
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.result-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fbfdfd;
+  padding: 16px;
+}
+
+.result-card strong {
+  display: block;
+  font-size: 26px;
+  line-height: 1.1;
+}
+
+.result-card span {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.figure {
+  margin: 22px 0 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  overflow: hidden;
+}
+
+.figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.figure.narrow {
+  max-width: 760px;
+}
+
+.figure-caption {
+  border-top: 1px solid var(--line);
+  padding: 12px 14px;
+  color: var(--muted);
+  font-size: 14px;
+  background: #fbfdfd;
+}
+
+.data-table {
+  width: 100%;
+  margin-top: 18px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.data-table th,
+.data-table td {
+  border: 1px solid var(--line);
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.data-table th {
+  background: #f2f6f7;
+  color: var(--ink);
+}
+
+.data-table td {
+  color: var(--muted);
+}
+
 .footer {
   padding: 34px 0 46px;
   color: var(--muted);
@@ -532,6 +627,7 @@ p {
   .grid.two,
   .grid.three,
   .toc,
+  .result-grid,
   .flow,
   .hooks,
   .matrix,

@@ -36,7 +36,6 @@
       <strong>На этой странице</strong>
       <a href="#кратко">Кратко</a>
         <a href="#главная-идея">Главная идея</a>
-        <a href="#почему-выбран-benchmark-loop">Почему выбран benchmark loop</a>
         <a href="#почему-не-менять-сам-benchmark">Почему не менять сам benchmark</a>
         <a href="#практическая-связка">Практическая связка</a>
         <a href="#почему-openai-compatible-interface-важен">Почему OpenAI-compatible interface важен</a>
@@ -48,10 +47,6 @@
         <a href="#модульность-проекта">Модульность проекта</a>
         <a href="#1-proxy-micro-framework" style="padding-left: 14px">1. Proxy / micro-framework</a>
         <a href="#2-runner-launcher" style="padding-left: 14px">2. Runner / launcher</a>
-        <a href="#почему-сейчас-проект-единый">Почему сейчас проект единый</a>
-        <a href="#возможное-будущее-разделение">Возможное будущее разделение</a>
-        <a href="#tts-proxy-framework" style="padding-left: 14px">tts-proxy-framework</a>
-        <a href="#gaia-experiment-launcher" style="padding-left: 14px">gaia-experiment-launcher</a>
         <a href="#что-считается-результатом-проекта">Что считается результатом проекта</a>
         <a href="#как-выглядит-типовой-эксперимент">Как выглядит типовой эксперимент</a>
         <a href="#пример-конфигурации">Пример конфигурации</a>
@@ -87,20 +82,6 @@
 <li>комбинировать несколько техник;</li>
 <li>сохранять конфигурацию запуска.</li>
 </ul>
-</section>
-<section id="почему-выбран-benchmark-loop"><h2>Почему выбран benchmark loop</h2>
-<p>Benchmark loop — удобная среда для исследования поведения моделей, потому что он даёт повторяемые задачи и измеряемый результат.</p>
-<p>GAIA особенно интересна как benchmark, потому что задачи требуют не только одного прямого ответа, а часто включают:</p>
-<ul>
-<li>multi-step reasoning;</li>
-<li>использование инструментов;</li>
-<li>работу с внешними данными;</li>
-<li>обработку промежуточных наблюдений;</li>
-<li>удержание контекста;</li>
-<li>планирование;</li>
-<li>аккуратное извлечение финального ответа.</li>
-</ul>
-<p>Это делает GAIA хорошей площадкой для проверки техник, которые улучшают поведение модели во время выполнения задачи.</p>
 </section>
 <section id="почему-не-менять-сам-benchmark"><h2>Почему не менять сам benchmark</h2>
 <p>Benchmark runner должен оставаться максимально чистым.</p>
@@ -242,65 +223,16 @@ MLX             — Mac / Apple Silicon</code></pre>
 </ul>
 </section>
 <section id="модульность-проекта"><h2>Модульность проекта</h2>
-<p>Проект логически делится на две части.</p>
+<p>Проект логически делится на две части: proxy / micro-framework отвечает за experimental techniques, а runner / launcher — за воспроизводимый запуск эксперимента.</p>
 </section>
 <section id="1-proxy-micro-framework"><h3>1. Proxy / micro-framework</h3>
-<p>Эта часть отвечает за experimental techniques.</p>
-<p>Она даёт:</p>
-<ul>
-<li>OpenAI-compatible proxy;</li>
-<li>hook points;</li>
-<li>task-local state;</li>
-<li>middleware chain;</li>
-<li>feature flags;</li>
-<li>возможность реализовывать техники отдельными модулями;</li>
-<li>возможность выполнять дополнительные model calls;</li>
-<li>возможность агрегировать ответы.</li>
-</ul>
+<p>Эта часть даёт OpenAI-compatible proxy, hook points, task-local state, middleware chain, feature flags, отдельные модули техник, дополнительные model calls и агрегацию ответов.</p>
 </section>
 <section id="2-runner-launcher"><h3>2. Runner / launcher</h3>
-<p>Эта часть отвечает за запуск эксперимента.</p>
-<p>Она даёт:</p>
-<ul>
-<li>старт base model backend;</li>
-<li>старт proxy;</li>
-<li>старт InspectAI / GAIA;</li>
-<li>readiness checks;</li>
-<li>logs;</li>
-<li>cleanup;</li>
-<li>backend-specific env;</li>
-<li>поддержку разных inference-сред.</li>
-</ul>
+<p>Эта часть запускает base model backend, proxy и InspectAI / GAIA, делает readiness checks, сохраняет logs, выполняет cleanup, учитывает backend-specific env и поддерживает разные inference-среды.</p>
+<p>Сейчас проект остаётся единым репозиторием, потому что proxy, launcher, benchmark runner и model backend тесно связаны в практическом запуске. Это удобно на этапе активной разработки, когда одновременно меняются hooks, набор техник, scripts, Colab workflow, структура логов и benchmark configuration.</p>
+<p>После стабилизации инфраструктуру можно разделить на два reusable/open-source компонента: <code>tts-proxy-framework</code> для hook-based proxy и <code>gaia-experiment-launcher</code> для запуска GAIA/InspectAI на разнородном compute.</p>
 <p>Вместе эти части дают полный research loop.</p>
-</section>
-<section id="почему-сейчас-проект-единый"><h2>Почему сейчас проект единый</h2>
-<p>Сейчас проект находится в одном репозитории, потому что обе части тесно связаны в практическом запуске.</p>
-<p>Для проверки техник нужен launcher. Для launcher’а нужен proxy. Для proxy нужен benchmark runner и base model backend.</p>
-<p>Единый проект удобен на этапе активной разработки, когда меняется всё сразу:</p>
-<ul>
-<li>interface hooks;</li>
-<li>набор техник;</li>
-<li>запуск backend’ов;</li>
-<li><code>.env</code>;</li>
-<li>scripts;</li>
-<li>Colab workflow;</li>
-<li>структура логов;</li>
-<li>benchmark configuration.</li>
-</ul>
-<p>После стабилизации проект можно разделить на два репозитория.</p>
-</section>
-<section id="возможное-будущее-разделение"><h2>Возможное будущее разделение</h2>
-<p>В будущем проект можно разделить на два reusable/open-source репозитория:</p>
-<pre><code class="language-text">tts-proxy-framework
-gaia-experiment-launcher</code></pre>
-</section>
-<section id="tts-proxy-framework"><h3>tts-proxy-framework</h3>
-<p>Самостоятельный hook-based proxy для подключения test-time и context-saving техник поверх OpenAI-compatible модели.</p>
-<p>Он может быть полезен не только для GAIA, а для любых benchmark’ов или evaluation loops, которые вызывают модель через OpenAI-compatible API.</p>
-</section>
-<section id="gaia-experiment-launcher"><h3>gaia-experiment-launcher</h3>
-<p>Самостоятельный launcher для воспроизводимого запуска GAIA/InspectAI на разнородном compute.</p>
-<p>Он может быть полезен даже без конкретного набора техник, просто как infrastructure layer для запуска GAIA с локальными моделями и разными backend’ами.</p>
 </section>
 <section id="что-считается-результатом-проекта"><h2>Что считается результатом проекта</h2>
 <p>Результат проекта — не один конкретный score на benchmark’е, а инфраструктура, которая позволяет быстро получать и сравнивать такие scores.</p>
