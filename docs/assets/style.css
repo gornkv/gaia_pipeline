@@ -22,6 +22,12 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -49,9 +55,11 @@ code {
   background: #eef3f5;
   color: #26434b;
   font-size: .94em;
+  overflow-wrap: anywhere;
 }
 
 pre {
+  max-width: 100%;
   margin: 18px 0 0;
   padding: 18px;
   overflow-x: auto;
@@ -63,9 +71,12 @@ pre {
 }
 
 pre code {
+  display: block;
+  min-width: 0;
   padding: 0;
   background: transparent;
   color: inherit;
+  overflow-wrap: normal;
 }
 
 .nav {
@@ -92,6 +103,10 @@ pre code {
   gap: 18px;
 }
 
+.nav-inner > * {
+  min-width: 0;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -112,6 +127,8 @@ pre code {
   display: flex;
   align-items: center;
   gap: 6px;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
   color: var(--muted);
   font-size: 14px;
@@ -311,6 +328,25 @@ p {
   gap: 16px;
 }
 
+.hero > *,
+.grid > *,
+.toc > *,
+.doc-layout > *,
+.doc,
+.doc section,
+.card,
+.toc-card,
+.side-toc,
+.terminal,
+.architecture,
+.flow > *,
+.hooks > *,
+.matrix > *,
+.metric-board > *,
+.result-grid > * {
+  min-width: 0;
+}
+
 .grid.two {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -422,6 +458,7 @@ p {
 .side-toc a {
   display: block;
   padding: 7px 0;
+  overflow-wrap: anywhere;
 }
 
 .side-toc a:hover {
@@ -429,6 +466,7 @@ p {
 }
 
 .doc {
+  max-width: 100%;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: #fff;
@@ -596,6 +634,7 @@ p {
   margin-top: 18px;
   border-collapse: collapse;
   font-size: 14px;
+  table-layout: fixed;
 }
 
 .data-table th,
@@ -604,6 +643,7 @@ p {
   padding: 10px 12px;
   text-align: left;
   vertical-align: top;
+  overflow-wrap: anywhere;
 }
 
 .data-table th {
@@ -662,9 +702,53 @@ p {
 
   .links {
     width: 100%;
+    flex-wrap: wrap;
+    overflow-x: visible;
   }
 
   .hero {
     padding-top: 46px;
+  }
+
+  .doc {
+    padding: 20px;
+  }
+
+  pre {
+    padding: 14px;
+    font-size: 12px;
+  }
+
+  .data-table,
+  .data-table thead,
+  .data-table tbody,
+  .data-table tr,
+  .data-table th,
+  .data-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .data-table thead {
+    display: none;
+  }
+
+  .data-table tr {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .data-table tr + tr {
+    margin-top: 10px;
+  }
+
+  .data-table td {
+    border: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .data-table td:last-child {
+    border-bottom: 0;
   }
 }
