@@ -65,7 +65,7 @@ class Breakpoints:
             f"context remaining: {max(CTX_LIMIT - context, 0)} tokens"
         )
         if last_tool_result_tokens:
-            status += f"; this tool result about {last_tool_result_tokens} tokens"
+            status += f"; latest tool result(s) about {last_tool_result_tokens} tokens"
         status += ".]"
         print(f"[BUDGET_TRACKER] appending transient status to tool result: {status}", flush=True)
 
