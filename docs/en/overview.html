@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project Goal - GAIA Pipeline</title>
+  <meta name="description" content="Overall GAIA Pipeline architecture for LLM behavior experiments in a benchmark loop.">
+  <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+  <nav class="nav" aria-label="Main navigation">
+    <div class="nav-inner">
+      <a class="brand" href="index.html" aria-label="GAIA Pipeline"><span class="brand-mark" aria-hidden="true"></span><span>GAIA Pipeline</span></a>
+      <div class="links"><a href="index.html">Overview</a><a href="overview.html" aria-current="page">Project Goal</a><a href="proxy.html">TTS Proxy</a><a href="launcher.html">Launcher</a><a href="results.html">Results</a></div>
+    </div>
+  </nav>
+  <main>
+    <section class="hero single">
+      <div>
+        <div class="eyebrow"><span class="pulse"></span> Project overview</div>
+        <h1>Benchmark loop for LLM behavior experiments</h1>
+        <p class="lead">Overall project description: why a separate benchmark loop is useful, how the proxy and launcher fit together, which techniques are studied, and why the architecture is focused on reproducible experiments.</p>
+      </div>
+    </section>
+    <div class="doc-layout">
+      <aside class="side-toc" aria-label="Page table of contents">
+        <strong>On this page</strong>
+        <a href="#short">Short version</a>
+        <a href="#main-idea">Main idea</a>
+        <a href="#why-not-change-benchmark">Why not change the benchmark</a>
+        <a href="#practical-stack">Practical stack</a>
+        <a href="#openai-compatible">Why OpenAI-compatible API matters</a>
+        <a href="#research-directions">Research directions</a>
+        <a href="#test-time-scaling">Test-time scaling</a>
+        <a href="#context-optimization">Context optimization</a>
+        <a href="#small-models">Why small models matter</a>
+        <a href="#heterogeneous-compute">Heterogeneous compute</a>
+        <a href="#modularity">Project modularity</a>
+        <a href="#project-output">Project output</a>
+        <a href="#workflow">Typical experiment</a>
+        <a href="#configuration">Configuration example</a>
+        <a href="#audience">Audience</a>
+        <a href="#limitations">Limitations</a>
+        <a href="#summary">Summary</a>
+      </aside>
+      <article class="doc">
+        <section id="short"><h2>Short version</h2>
+          <p>The project builds infrastructure for experimenting with language-model behavior inside a benchmark loop. The main practical target is GAIA through InspectAI, but the architecture is not tightly coupled to GAIA.</p>
+          <p>The project has two major parts:</p>
+          <pre><code class="language-text">1. Test-Time Scaling Proxy
+2. GAIA Experiment Launcher</code></pre>
+          <p>The proxy adds experimental techniques on top of an OpenAI-compatible model. The launcher makes the full pipeline reproducible across different inference backends and compute environments.</p>
+        </section>
+        <section id="main-idea"><h2>Main idea</h2>
+          <p>The goal is to make LLM benchmark experiments faster, more modular, and reproducible. Instead of modifying the benchmark runner for every technique, the project introduces an intermediate layer:</p>
+          <pre><code class="language-text">Benchmark runner -> Proxy with techniques -> Base model backend</code></pre>
+          <p>This layer can change prompts and requests, inspect responses, run extra model calls, aggregate answers, enable Best-of-N, save intermediate state, compact context, track tool calls, collect usage, combine techniques, and preserve run configuration.</p>
+        </section>
+        <section id="why-not-change-benchmark"><h2>Why not change the benchmark</h2>
+          <p>The benchmark runner should stay clean. If every technique is embedded directly into benchmark code, the benchmark becomes harder to maintain, techniques become implementation-specific, comparisons become harder, and experiment code gets mixed with scoring and task execution.</p>
+          <p>The proxy owns experimental logic. The benchmark runs tasks and scores answers. The backend loads the model and serves responses.</p>
+        </section>
+        <section id="practical-stack"><h2>Practical stack</h2>
+          <pre><code class="language-text">GAIA Benchmark
+        ↓
+InspectAI GAIA runner
+        ↓
+Test-Time Scaling Proxy
+        ↓
+OpenAI-compatible model backend
+        ↓
+Local / Colab / Mac / GPU inference</code></pre>
+          <p>For InspectAI, the proxy looks like a normal model. For the proxy, the base model looks like a normal OpenAI-compatible endpoint.</p>
+        </section>
+        <section id="openai-compatible"><h2>Why OpenAI-compatible API matters</h2>
+          <p>The OpenAI-compatible API is a practical standard for local and remote inference backends. llama.cpp, vLLM, MLX-based serving, and other model servers can expose <code>/v1/chat/completions</code>.</p>
+          <p>If a benchmark runner can call an OpenAI-compatible endpoint, the proxy can be inserted between the benchmark and the model without deep integration work.</p>
+        </section>
+        <section id="research-directions"><h2>Research directions</h2>
+          <p>The project studies test-time techniques that change model behavior through inference organization rather than training. Examples include Best-of-N, self-consistency, adaptive sampling, ranked voting, context compaction, structured notes, budget-aware reasoning, tool-result summarization, branch isolation, final-answer selection, and intermediate state tracking.</p>
+        </section>
+        <section id="test-time-scaling"><h2>Test-time scaling</h2>
+          <p>Test-time scaling tries to improve answer quality by spending more compute at inference time. The simplest version is to make several attempts and choose the best one. More advanced variants run independent reasoning branches, ask the model to verify its answer, use voting, estimate task difficulty, or allocate extra calls only to harder tasks.</p>
+        </section>
+        <section id="context-optimization"><h2>Context optimization</h2>
+          <p>In GAIA-like tasks, history can grow quickly: system prompt, task, reasoning, tool calls, tool results, observations, retries, and branch histories. For small-context models this can become a bottleneck.</p>
+          <p>The project supports techniques that compress long tool results, extract facts, save structured notes, remove irrelevant history, isolate branches, and manage accumulated messages.</p>
+        </section>
+        <section id="small-models"><h2>Why small models matter</h2>
+          <p>The project assumes realistic compute constraints: small open-source models, quantized models, local CPU, Apple Silicon, Google Colab, one local GPU, limited context, limited memory, and slower inference. In this setting, inference-time techniques can improve usefulness without training or heavy infrastructure.</p>
+        </section>
+        <section id="heterogeneous-compute"><h2>Heterogeneous compute</h2>
+          <pre><code class="language-text">llama.cpp       — CPU inference
+llama.cpp CUDA  — Google Colab
+vLLM            — local GPU machine
+MLX             — Mac / Apple Silicon</code></pre>
+          <p>The backend is selected through configuration. The benchmark runner does not depend on the backend, the proxy does not depend on a specific model, and the launcher knows how to start the chosen pipeline.</p>
+        </section>
+        <section id="modularity"><h2>Project modularity</h2>
+          <p>The project is split into two logical parts. The proxy / micro-framework handles experimental techniques. The runner / launcher handles reproducible experiment execution.</p>
+          <h3>1. Proxy / micro-framework</h3>
+          <p>This part provides an OpenAI-compatible proxy, hook points, task-local state, middleware chains, feature flags, technique modules, extra model calls, and answer aggregation.</p>
+          <h3>2. Runner / launcher</h3>
+          <p>This part starts the base model backend, proxy, and InspectAI / GAIA; performs readiness checks; saves logs; performs cleanup; handles backend-specific env; and supports multiple inference environments.</p>
+          <p>The project currently lives in one repository because the proxy, launcher, benchmark runner, and backend are tightly connected during active development. After stabilization, the infrastructure can be split into reusable components: <code>tts-proxy-framework</code> and <code>gaia-experiment-launcher</code>.</p>
+        </section>
+        <section id="project-output"><h2>Project output</h2>
+          <p>The output is not a single benchmark score. It is infrastructure that makes scores quick to produce and compare: a unified benchmark pipeline, a proxy layer for test-time techniques, hooks, task-local state, feature flags, Best-of-N support, context-saving techniques, launcher support for different backends, Colab support, Apple Silicon support, CPU/CUDA scenarios, reproducible env configuration, centralized logs, and a path to reusable components.</p>
+        </section>
+        <section id="workflow"><h2>Typical experiment</h2>
+          <pre><code class="language-text">1. Choose a backend
+2. Choose a model
+3. Configure GAIA task and split
+4. Enable feature flags
+5. Start the launcher
+6. Launcher starts the backend
+7. Launcher starts the proxy
+8. Launcher starts InspectAI / GAIA
+9. Proxy applies selected techniques
+10. Benchmark receives final answers
+11. Logs and results are saved
+12. Configuration can be reproduced later</code></pre>
+        </section>
+        <section id="configuration"><h2>Configuration example</h2>
+          <pre><code class="language-env">BASE_MODEL_RUNNER_TYPE=vllm16GB
+HF_TOKEN=hf_...
+GAIA_TASK=inspect_evals/gaia_level1
+GAIA_SPLIT=validation
+FEATURE_SELF_CONSISTENCY=1
+FEATURE_CONTEXT_COMPACTION=1
+FEATURE_EXAMPLE=0</code></pre>
+          <pre><code class="language-env">BASE_MODEL_API_BASE_URL=http://127.0.0.1:18081/v1
+BASE_MODEL_API_KEY=EMPTY
+BASE_MODEL_NAME=qwen3.5-9b-q4</code></pre>
+        </section>
+        <section id="audience"><h2>Audience</h2>
+          <p>The project is intended for LLM behavior researchers, benchmark teams, test-time scaling developers, users of local open-source models, teams running GAIA without closed APIs, and people working under constrained compute.</p>
+        </section>
+        <section id="limitations"><h2>Limitations</h2>
+          <p>The focus is research and evaluation, not production serving. Extra model calls, experimental logic, detailed logs, and flexibility are expected. Latency is not the only optimization target.</p>
+        </section>
+        <section id="summary"><h2>Summary</h2>
+          <p>The project creates practical infrastructure for adding, running, and comparing model-behavior techniques without rewriting the benchmark runner or locking the system to one inference backend.</p>
+        </section>
+      </article>
+    </div>
+  </main>
+  <footer class="footer"><div class="container">GAIA Pipeline - infrastructure for reproducible benchmark experiments with OpenAI-compatible models.</div></footer>
+  <script src="../assets/site.js"></script>
+</body>
+</html>

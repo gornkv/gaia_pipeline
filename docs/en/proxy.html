@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Test-Time Scaling Proxy - GAIA Pipeline</title>
+  <meta name="description" content="OpenAI-compatible proxy and hook-based micro-framework for benchmark experiments.">
+  <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+  <nav class="nav" aria-label="Main navigation">
+    <div class="nav-inner">
+      <a class="brand" href="index.html" aria-label="GAIA Pipeline"><span class="brand-mark" aria-hidden="true"></span><span>GAIA Pipeline</span></a>
+      <div class="links"><a href="index.html">Overview</a><a href="overview.html">Project Goal</a><a href="proxy.html" aria-current="page">TTS Proxy</a><a href="launcher.html">Launcher</a><a href="results.html">Results</a></div>
+    </div>
+  </nav>
+  <main>
+    <section class="hero single">
+      <div>
+        <div class="eyebrow blue"><span class="pulse"></span> Proxy / micro-framework</div>
+        <h1>Test-Time Scaling Proxy</h1>
+        <p class="lead">An OpenAI-compatible proxy over a base model: it connects test-time scaling, context-saving, and other experimental techniques through lifecycle hooks.</p>
+      </div>
+    </section>
+    <div class="doc-layout">
+      <aside class="side-toc" aria-label="Page table of contents">
+        <strong>On this page</strong>
+        <a href="#short">Short version</a>
+        <a href="#why-proxy">Why a proxy</a>
+        <a href="#what-it-does">What the proxy does</a>
+        <a href="#techniques">Supported technique classes</a>
+        <a href="#hooks">Hook-based micro-framework</a>
+        <a href="#interface">Technique interface</a>
+        <a href="#state">Task-local state</a>
+        <a href="#composition">Composing techniques</a>
+        <a href="#feature-flags">Feature flags</a>
+        <a href="#best-of-n">Best-of-N example</a>
+        <a href="#context-saving">Context-saving example</a>
+        <a href="#not-just-wrapper">Why this is not just a wrapper</a>
+        <a href="#responsibility">Responsibility boundary</a>
+        <a href="#place-in-project">Place in the project</a>
+        <a href="#audience">Audience</a>
+        <a href="#summary">Summary</a>
+      </aside>
+      <article class="doc">
+        <section id="short"><h2>Short version</h2>
+          <p>Test-Time Scaling Proxy is an OpenAI-compatible proxy over a base language model. It is designed for experiments with test-time scaling, Best-of-N, self-consistency, context-saving, and other lightweight techniques that can be inserted into a benchmark loop without changing the benchmark code.</p>
+          <pre><code class="language-text">InspectAI / GAIA -> Test-Time Scaling Proxy -> OpenAI-compatible model backend</code></pre>
+          <p>The benchmark calls the proxy as a normal OpenAI-compatible model. The proxy can modify the request, call the base model, process the response, run additional model calls, aggregate results, and return one final response in the expected format.</p>
+        </section>
+        <section id="why-proxy"><h2>Why a proxy</h2>
+          <p>The goal is to make model-behavior experiments fast, reproducible, and extensible. Instead of embedding every new technique into the benchmark runner, a technique is implemented as a separate module and connected to task, model-call, and tool-call lifecycle hooks.</p>
+          <p>This is useful when many techniques need to be compared, techniques change often, some techniques require multiple internal calls, intermediate state must be preserved, the benchmark must remain unchanged, and the base model may run on different backends.</p>
+        </section>
+        <section id="what-it-does"><h2>What the proxy does</h2>
+          <p>The proxy accepts OpenAI-compatible requests and itself looks like a normal model to the benchmark runner. It can accept <code>/v1/chat/completions</code>, read messages and tools, change prompts or parameters, forward requests to the model backend, process JSON responses, run multiple internal calls, aggregate answers, select the best answer, track usage and state, and return one final response.</p>
+        </section>
+        <section id="techniques"><h2>Supported technique classes</h2>
+          <p>The proxy is best suited for techniques that naturally fit a hook-based model: Best-of-N, self-consistency, ranked voting, adaptive Best-of-N, budget tracking, context compaction, structured notes, ReSum-like methods, prompt modification, response analysis, tool-result summarization, usage tracking, and lightweight test-time scaling.</p>
+          <p>Heavy tree-search scaffolds, complex external planners, and production serving architectures are less natural fits, although parts of them can still be expressed through hooks.</p>
+        </section>
+        <section id="hooks"><h2>Hook-based micro-framework</h2>
+          <p>The proxy defines hooks for task lifecycle, model-call lifecycle, and tool-call lifecycle:</p>
+          <pre><code class="language-text">before_task_call / after_task_call
+before_chat_message / after_chat_message
+before_tool_call / after_tool_call</code></pre>
+          <p>These hooks initialize technique state, modify requests, collect usage, log responses, save intermediate variants, compress tool results, manage context, and prepare data for later aggregation.</p>
+        </section>
+        <section id="interface"><h2>Technique interface</h2>
+          <pre><code class="language-python">class Technique:
+    feature_name = "FEATURE_MY_TECHNIQUE"
+
+    def before_task_call(self, payload): ...
+    def before_chat_message(self, payload): ...
+    def after_chat_message(self, response): ...
+    def after_task_call(self, response): ...
+    def before_tool_call(self, response): ...
+    def after_tool_call(self, payload): ...</code></pre>
+          <p>A simple technique can be a single file and one class. It only needs to implement the hooks it uses.</p>
+        </section>
+        <section id="state"><h2>Task-local state</h2>
+          <p>Techniques can store counters, intermediate answers, usage, model-call counts, tool-call counts, original task payloads, branch payloads, voting results, compacted context, structured notes, complexity signals, and any data needed by later hooks.</p>
+          <p>This enables multi-step techniques such as Best-of-N, which needs to remember branches, collected answers, remaining attempts, and the selected final answer.</p>
+        </section>
+        <section id="composition"><h2>Composing techniques</h2>
+          <p>Multiple techniques can be enabled at once. Active techniques form a linear middleware chain:</p>
+          <pre><code class="language-text">request/response -> Technique A hook -> Technique B hook -> Technique C hook</code></pre>
+          <p>For example, one technique can track budget, another can compact context, a third can run Best-of-N, a fourth can collect structured notes, and a fifth can select the final answer.</p>
+        </section>
+        <section id="feature-flags"><h2>Feature flags</h2>
+          <pre><code class="language-env">FEATURE_SELF_CONSISTENCY=1
+FEATURE_CONTEXT_COMPACTION=1
+FEATURE_EXAMPLE=0</code></pre>
+          <p>Feature flags make it easy to enable and disable techniques, save experiment configuration, reproduce runs, and compare technique sets.</p>
+        </section>
+        <section id="best-of-n"><h2>Best-of-N example</h2>
+          <pre><code class="language-text">Benchmark request
+        ↓
+TTS Proxy
+        ↓
+Branch 1 -> base model
+Branch 2 -> base model
+Branch 3 -> base model
+        ↓
+Aggregation / voting / selection
+        ↓
+Final response to benchmark</code></pre>
+          <p>The benchmark receives one final answer and does not need to know that several internal attempts were made.</p>
+        </section>
+        <section id="context-saving"><h2>Context-saving example</h2>
+          <p>In GAIA-like tasks, long tool results and accumulated history can become a problem for smaller models. The proxy can compress tool results, extract structured notes, remove irrelevant history, store compact task state, track context growth, and add a short state summary instead of full history.</p>
+        </section>
+        <section id="not-just-wrapper"><h2>Why this is not just a wrapper</h2>
+          <p>A normal model wrapper usually only forwards requests. Test-Time Scaling Proxy adds a research-oriented lifecycle layer before and after tasks, model calls, tool calls, and tool results. This turns it into a micro-framework for benchmark experiments.</p>
+        </section>
+        <section id="responsibility"><h2>Responsibility boundary</h2>
+          <p>The benchmark runner chooses the benchmark, loads tasks, runs scoring and tools, and evaluates results. The base model backend loads the model and performs inference. The proxy owns intervention points, techniques, state, extra calls, aggregation, context-saving, and OpenAI-compatible behavior toward the benchmark.</p>
+        </section>
+        <section id="place-in-project"><h2>Place in the project</h2>
+          <p>Today the micro-framework is part of a unified GAIA/InspectAI experiment project. Later it can be extracted into a reusable repository such as <code>tts-proxy-framework</code>.</p>
+        </section>
+        <section id="audience"><h2>Audience</h2>
+          <p>The component is useful for test-time scaling researchers, benchmark infrastructure developers, teams comparing inference-time techniques, local-LLM users, small-model experimenters, and anyone who wants to separate benchmark code from experimental techniques.</p>
+        </section>
+        <section id="summary"><h2>Summary</h2>
+          <p>Test-Time Scaling Proxy keeps the benchmark and model backend unchanged while techniques are added as modules, hooks provide lifecycle intervention points, task-local state enables multi-step methods, and feature flags make experiments reproducible.</p>
+        </section>
+      </article>
+    </div>
+  </main>
+  <footer class="footer"><div class="container">GAIA Pipeline - infrastructure for reproducible benchmark experiments with OpenAI-compatible models.</div></footer>
+  <script src="../assets/site.js"></script>
+</body>
+</html>

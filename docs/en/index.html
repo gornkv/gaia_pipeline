@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Overview - GAIA Pipeline</title>
+  <meta name="description" content="GAIA Pipeline documentation: Test-Time Scaling Proxy, GAIA Experiment Launcher, and benchmark experiment results.">
+  <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+  <nav class="nav" aria-label="Main navigation">
+    <div class="nav-inner">
+      <a class="brand" href="index.html" aria-label="GAIA Pipeline">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>GAIA Pipeline</span>
+      </a>
+      <div class="links">
+        <a href="index.html" aria-current="page">Overview</a>
+        <a href="overview.html">Project Goal</a>
+        <a href="proxy.html">TTS Proxy</a>
+        <a href="launcher.html">Launcher</a>
+        <a href="results.html">Results</a>
+      </div>
+    </div>
+  </nav>
+  <main>
+    <section class="hero">
+      <div>
+        <div class="eyebrow"><span class="pulse"></span> Home</div>
+        <h1>GAIA Pipeline</h1>
+        <p class="lead">Infrastructure for reproducible LLM behavior experiments in a benchmark loop: an OpenAI-compatible proxy for test-time techniques, a GAIA / InspectAI launcher, and results from heterogeneous compute setups.</p>
+        <div class="hero-actions">
+          <a class="button" href="overview.html">Start With The Project Goal</a>
+          <a class="button secondary" href="results.html">Open Results</a>
+        </div>
+      </div>
+      <div class="terminal" aria-label="Project pipeline">
+        <div class="terminal-head"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+        <pre><span class="dim"># practical pipeline</span>
+GAIA Benchmark
+  -> InspectAI GAIA runner
+  -> Test-Time Scaling Proxy
+  -> OpenAI-compatible model backend
+  -> Local / Colab / Mac / GPU inference</pre>
+      </div>
+    </section>
+
+    <section class="section alt">
+      <div class="container">
+        <div class="section-head">
+          <h2>Project Sections</h2>
+          <p>Documentation map: overall architecture, proxy micro-framework, experiment launcher, and measured results.</p>
+        </div>
+        <div class="toc">
+          <article class="toc-card">
+            <span class="tag">Project overview</span>
+            <h3><a href="overview.html">Benchmark loop for LLM behavior experiments</a></h3>
+            <ol>
+              <li><a href="overview.html#short">Short version</a></li>
+              <li><a href="overview.html#main-idea">Main idea</a></li>
+              <li><a href="overview.html#why-not-change-benchmark">Why not change the benchmark</a></li>
+              <li><a href="overview.html#practical-stack">Practical stack</a></li>
+              <li><a href="overview.html#openai-compatible">Why OpenAI-compatible API matters</a></li>
+              <li><a href="overview.html#research-directions">Research directions</a></li>
+              <li><a href="overview.html#test-time-scaling">Test-time scaling</a></li>
+              <li><a href="overview.html#context-optimization">Context optimization</a></li>
+              <li><a href="overview.html#small-models">Why small models matter</a></li>
+              <li><a href="overview.html#heterogeneous-compute">Heterogeneous compute</a></li>
+              <li><a href="overview.html#modularity">Project modularity</a></li>
+              <li><a href="overview.html#project-output">Project output</a></li>
+              <li><a href="overview.html#workflow">Typical experiment</a></li>
+              <li><a href="overview.html#configuration">Configuration example</a></li>
+              <li><a href="overview.html#audience">Audience</a></li>
+              <li><a href="overview.html#limitations">Limitations</a></li>
+              <li><a href="overview.html#summary">Summary</a></li>
+            </ol>
+          </article>
+
+          <article class="toc-card">
+            <span class="tag blue">Proxy / micro-framework</span>
+            <h3><a href="proxy.html">Test-Time Scaling Proxy</a></h3>
+            <ol>
+              <li><a href="proxy.html#short">Short version</a></li>
+              <li><a href="proxy.html#why-proxy">Why a proxy</a></li>
+              <li><a href="proxy.html#what-it-does">What the proxy does</a></li>
+              <li><a href="proxy.html#techniques">Supported technique classes</a></li>
+              <li><a href="proxy.html#hooks">Hook-based micro-framework</a></li>
+              <li><a href="proxy.html#interface">Technique interface</a></li>
+              <li><a href="proxy.html#state">Task-local state</a></li>
+              <li><a href="proxy.html#composition">Composing techniques</a></li>
+              <li><a href="proxy.html#feature-flags">Feature flags</a></li>
+              <li><a href="proxy.html#best-of-n">Best-of-N example</a></li>
+              <li><a href="proxy.html#context-saving">Context-saving example</a></li>
+              <li><a href="proxy.html#not-just-wrapper">Why this is not just a wrapper</a></li>
+              <li><a href="proxy.html#responsibility">Responsibility boundary</a></li>
+              <li><a href="proxy.html#place-in-project">Place in the project</a></li>
+              <li><a href="proxy.html#audience">Audience</a></li>
+              <li><a href="proxy.html#summary">Summary</a></li>
+            </ol>
+          </article>
+
+          <article class="toc-card">
+            <span class="tag blue">Runner / infrastructure</span>
+            <h3><a href="launcher.html">GAIA Experiment Launcher</a></h3>
+            <ol>
+              <li><a href="launcher.html#short">Short version</a></li>
+              <li><a href="launcher.html#problem">Problem solved by the launcher</a></li>
+              <li><a href="launcher.html#pipeline">Launch pipeline</a></li>
+              <li><a href="launcher.html#why-launcher">Why a separate launcher</a></li>
+              <li><a href="launcher.html#inference">Supported inference modes</a></li>
+              <li><a href="launcher.html#what-it-does">What the launcher does</a></li>
+              <li><a href="launcher.html#readiness">Endpoint readiness checks</a></li>
+              <li><a href="launcher.html#logs">Pipeline logs</a></li>
+              <li><a href="launcher.html#cleanup">Process cleanup</a></li>
+              <li><a href="launcher.html#colab">Google Colab and Drive</a></li>
+              <li><a href="launcher.html#docker">Docker and no-Docker modes</a></li>
+              <li><a href="launcher.html#env">Configuration through .env</a></li>
+              <li><a href="launcher.html#backend-env">Backend-specific .env</a></li>
+              <li><a href="launcher.html#reproducibility">Reproducibility</a></li>
+              <li><a href="launcher.html#small-compute">Why this matters for small compute</a></li>
+              <li><a href="launcher.html#place-in-project">Place in the project</a></li>
+              <li><a href="launcher.html#audience">Audience</a></li>
+              <li><a href="launcher.html#summary">Summary</a></li>
+            </ol>
+          </article>
+
+          <article class="toc-card">
+            <span class="tag">Project results</span>
+            <h3><a href="results.html">Experiment Results</a></h3>
+            <ol>
+              <li><a href="results.html#summary">Result summary</a></li>
+              <li><a href="results.html#baseline">Baseline run</a></li>
+              <li><a href="results.html#compare">Technique comparison</a></li>
+              <li><a href="results.html#cost">Cost</a></li>
+              <li><a href="results.html#usage">Real usage</a></li>
+              <li><a href="results.html#budget-tracker">Budget Tracker</a></li>
+              <li><a href="results.html#work">Work completed</a></li>
+              <li><a href="results.html#schemes">Schemes and tables</a></li>
+              <li><a href="results.html#limits">Limitations</a></li>
+              <li><a href="results.html#notes">Conclusions</a></li>
+            </ol>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="section-head">
+          <h2>Quick Links</h2>
+          <p>Common entry points for understanding the architecture, configuring runs, and reading the results.</p>
+        </div>
+        <div class="grid three">
+          <article class="card"><span class="tag blue">Architecture</span><h3><a href="overview.html#practical-stack">Practical stack</a></h3><p>GAIA, InspectAI, proxy, and OpenAI-compatible backend in one benchmark loop.</p></article>
+          <article class="card"><span class="tag gold">Config</span><h3><a href="launcher.html#env">Configuration through .env</a></h3><p>Backend runner, HF token, GAIA task, split, and feature flags.</p></article>
+          <article class="card"><span class="tag">Results</span><h3><a href="results.html">Experiment results</a></h3><p>Baseline run, technique comparison, cost charts, efficiency graphs, and conclusions.</p></article>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="footer">
+    <div class="container">GAIA Pipeline - infrastructure for reproducible benchmark experiments with OpenAI-compatible models.</div>
+  </footer>
+  <script src="../assets/site.js"></script>
+</body>
+</html>
