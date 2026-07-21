@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>GAIA Experiment Launcher: запуск benchmark pipeline на разнородном compute - GAIA Pipeline</title>
   <meta name="description" content="Документация GAIA Pipeline: Test-Time Scaling Proxy, GAIA Experiment Launcher и результаты benchmark-экспериментов.">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
@@ -40,7 +41,6 @@
         <a href="#почему-нужен-отдельный-launcher">Почему нужен отдельный launcher</a>
         <a href="#поддержанные-варианты-inference">Поддержанные варианты inference</a>
         <a href="#что-делает-launcher">Что делает launcher</a>
-        <a href="#почему-важна-последовательность-запуска">Почему важна последовательность запуска</a>
         <a href="#проверка-готовности-endpoint-ов">Проверка готовности endpoint’ов</a>
         <a href="#логи-всех-частей-pipeline">Логи всех частей pipeline</a>
         <a href="#очистка-процессов">Очистка процессов</a>
@@ -143,20 +143,14 @@ MLX             — Mac / Apple Silicon</code></pre>
 <li>отделяет общие параметры benchmark’а от backend-specific параметров.</li>
 </ul>
 </section>
-<section id="почему-важна-последовательность-запуска"><h2>Почему важна последовательность запуска</h2>
-<p>Компоненты зависят друг от друга.</p>
-<p>InspectAI / GAIA не должен стартовать раньше, чем поднялся proxy. Proxy не должен начинать работу без доступного base model backend. Base model backend должен сначала загрузить модель и открыть endpoint.</p>
+<section id="проверка-готовности-endpoint-ов"><h2>Проверка готовности endpoint’ов</h2>
+<p>Компоненты pipeline зависят друг от друга: InspectAI / GAIA не должен стартовать раньше proxy, proxy не должен начинать работу без доступного base model backend, а base model backend должен сначала загрузить модель и открыть endpoint.</p>
 <p>Поэтому launcher запускает pipeline последовательно:</p>
 <pre><code class="language-text">1. Сначала base model backend
 2. Потом Test-Time Scaling Proxy
 3. Потом InspectAI / GAIA benchmark</code></pre>
-<p>Это уменьшает количество ручных ошибок и делает запуск более стабильным.</p>
-</section>
-<section id="проверка-готовности-endpoint-ов"><h2>Проверка готовности endpoint’ов</h2>
-<p>Одна из важных функций launcher’а — readiness checks.</p>
-<p>Сам факт запуска процесса ещё не означает, что компонент готов принимать запросы. Например, model backend может стартовать быстро, но модель ещё будет загружаться в память. Proxy может быть запущен, но ещё не готов отвечать на <code>/health</code> или OpenAI-compatible endpoint.</p>
-<p>Launcher проверяет готовность endpoint’ов перед переходом к следующему этапу.</p>
-<p>Это особенно важно для тяжёлых моделей и удалённых/нестабильных сред, например Google Colab.</p>
+<p>После запуска каждого компонента launcher выполняет readiness checks. Сам факт запуска процесса ещё не означает, что компонент готов принимать запросы: model backend может стартовать быстро, но продолжать загружать модель в память; proxy может быть запущен, но ещё не отвечать на <code>/health</code> или OpenAI-compatible endpoint.</p>
+<p>Launcher проверяет готовность endpoint’ов перед переходом к следующему этапу. Это уменьшает количество ручных ошибок и особенно важно для тяжёлых моделей и удалённых/нестабильных сред, например Google Colab.</p>
 </section>
 <section id="логи-всех-частей-pipeline"><h2>Логи всех частей pipeline</h2>
 <p>Для benchmark-экспериментов важна отладка. Если запуск падает, нужно понимать, где именно произошла ошибка:</p>
