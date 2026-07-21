@@ -99,6 +99,11 @@ pre code {
   overflow-wrap: normal;
 }
 
+pre code.language-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .nav {
   position: sticky;
   top: 0;
@@ -540,6 +545,12 @@ p {
 
 .side-toc strong + .toc-group {
   margin-top: 6px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.side-toc .toc-group:first-child {
+  margin-top: 0;
   padding-top: 0;
   border-top: 0;
 }

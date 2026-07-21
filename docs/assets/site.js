@@ -89,6 +89,26 @@
   const findLinkForSection = (section) =>
     sections.find((item) => item.section === section)?.link;
 
+  const isAtPageBottom = () =>
+    window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 3;
+
+  const updateActiveFromScrollPosition = () => {
+    if (suppressScrollspy) return;
+
+    if (isAtPageBottom()) {
+      setActive(sections[sections.length - 1].link);
+      return;
+    }
+
+    const marker = Math.min(140, window.innerHeight * 0.28);
+    const current =
+      [...sections]
+        .reverse()
+        .find(({ section }) => section.getBoundingClientRect().top <= marker) || sections[0];
+
+    setActive(current.link);
+  };
+
   const releaseScrollspyWhenArrived = (section) => {
     window.clearTimeout(suppressTimer);
     const startedAt = performance.now();
@@ -133,6 +153,11 @@
     (entries) => {
       if (suppressScrollspy) return;
 
+      if (isAtPageBottom()) {
+        setActive(sections[sections.length - 1].link);
+        return;
+      }
+
       const visible = entries
         .filter((entry) => entry.isIntersecting)
         .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
@@ -157,6 +182,8 @@
     },
     { passive: true }
   );
+
+  window.addEventListener("scroll", updateActiveFromScrollPosition, { passive: true });
 
   window.addEventListener(
     "resize",
