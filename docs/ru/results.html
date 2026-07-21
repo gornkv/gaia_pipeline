@@ -28,7 +28,7 @@
     <div>
       <div class="eyebrow"><span class="pulse"></span> Project Results</div>
       <h1>Полученные результаты</h1>
-      <p class="lead">Главный сигнал уже виден: часть test-time техник дает прирост качества, но выигрыш нужно смотреть вместе со временем, токенами и устойчивостью запуска.</p>
+      <p class="lead">Главный сигнал уже виден, потому что часть test-time техник дает прирост качества, но выигрыш нужно смотреть вместе со временем, токенами и устойчивостью запуска.</p>
     </div>
   </section>
   <div class="doc-layout">
@@ -62,7 +62,7 @@
         <p>Baseline был посчитан на всех 53 задачах GAIA Level 1. Средняя точность составила 0.453, среднее время выполнения — 4.5 минуты на задачу, среднее потребление — 509k токенов на задачу.</p>
         <figure class="figure">
           <img src="../assets/results/baseline-all-53-tasks.png" alt="Baseline на 53 задачах: accuracy, time и token usage per task">
-          <figcaption class="figure-caption">Baseline по всем 53 задачам: correctness, время и token usage. Пунктирные линии показывают средние значения.</figcaption>
+          <figcaption class="figure-caption">Baseline по всем 53 задачам с correctness, временем и token usage. Пунктирные линии показывают средние значения.</figcaption>
         </figure>
       </section>
       <section id="compare">
@@ -84,7 +84,7 @@
         </table>
         <figure class="figure">
           <img src="../assets/results/feature-vs-baseline-accuracy.png" alt="Feature vs baseline accuracy">
-          <figcaption class="figure-caption">Feature vs baseline accuracy: зелёные полосы — улучшение, красные — ухудшение, серые — нейтральный эффект.</figcaption>
+          <figcaption class="figure-caption">Feature vs baseline accuracy с зелёными полосами для улучшения, красными для ухудшения и серыми для нейтрального эффекта.</figcaption>
         </figure>
       </section>
       <section id="cost">
@@ -96,7 +96,7 @@
         </figure>
         <figure class="figure">
           <img src="../assets/results/cost-per-feature.png" alt="Cost per feature: mean time and mean token usage">
-          <figcaption class="figure-caption">Средняя стоимость техник: time per task и token usage per task относительно baseline.</figcaption>
+          <figcaption class="figure-caption">Средняя стоимость техник по time per task и token usage per task относительно baseline.</figcaption>
         </figure>
       </section>
       <section id="usage">
@@ -104,7 +104,7 @@
         <p>Квадрант эффективности показывает trade-off между accuracy delta и overhead. STRUCTURED_NOTES выглядит как наиболее удачная lightweight-техника: она даёт положительный прирост accuracy и при этом не требует дополнительного token/time budget относительно baseline. HIAGENT также даёт прирост при низком overhead. BUDGET_TRACKER даёт максимальный прирост, но требует дополнительного compute.</p>
         <figure class="figure">
           <img src="../assets/results/feature-efficiency-quadrant.png" alt="Feature efficiency quadrant">
-          <figcaption class="figure-caption">Feature Efficiency Quadrant: accuracy gain vs token/time overhead. Зелёные точки — техники с улучшением accuracy.</figcaption>
+          <figcaption class="figure-caption">Feature Efficiency Quadrant with accuracy gain vs token/time overhead. Зелёные точки — техники с улучшением accuracy.</figcaption>
         </figure>
       </section>
       <section id="budget-tracker">
@@ -112,7 +112,7 @@
         <p>Отдельный график показывает метрики BUDGET_TRACKER: success per task, cumulative tokens, max effective input tokens, долю context window и рабочее время. Во втором и третьем графиках пунктирные линии отмечают context window используемой модели: baseline 256k и BUDGET_TRACKER 128k.</p>
         <figure class="figure">
           <img src="../assets/results/budget-tracker-token-budget-success.png" alt="Budget tracker: token budget vs success">
-          <figcaption class="figure-caption">BUDGET_TRACKER: token budget vs success, cumulative tokens, effective input, context ratio и working time.</figcaption>
+          <figcaption class="figure-caption">BUDGET_TRACKER с token budget vs success, cumulative tokens, effective input, context ratio и working time.</figcaption>
         </figure>
       </section>
       <section id="work">
@@ -129,7 +129,7 @@
         </figure>
         <figure class="figure narrow">
           <img src="../assets/results/benchmark-hook-points.png" alt="Benchmark hook points scheme">
-          <figcaption class="figure-caption">Benchmark hook points: before generate, after tool call, after tool result и after final answer.</figcaption>
+          <figcaption class="figure-caption">Benchmark hook points с before generate, after tool call, after tool result и after final answer.</figcaption>
         </figure>
         <figure class="figure narrow">
           <img src="../assets/results/technique-literature-roles.png" alt="Technique literature roles table">
