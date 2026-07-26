@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 356 80" fill="none" role="img" aria-label="CAPA">
+  <defs>
+    <linearGradient id="capaRing" x1="13" y1="67" x2="67" y2="13" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7a5cff"/>
+      <stop offset=".5" stop-color="#4d7cff"/>
+      <stop offset="1" stop-color="#2fd9c4"/>
+    </linearGradient>
+    <filter id="capaSoft" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="1.4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Ring mark -->
+  <g filter="url(#capaSoft)">
+    <path d="M59.1 20.9 A27 27 0 1 0 59.1 59.1" stroke="url(#capaRing)" stroke-width="8" stroke-linecap="round"/>
+  </g>
+  <circle cx="40" cy="40" r="6" fill="#7a5cff"/>
+
+  <!-- Wordmark: C A P A -->
+  <g stroke="#eef2f8" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M149.3 26.5 A22 22 0 1 0 149.3 53.5"/>
+    <path d="M178 62 L198 18 L218 62"/>
+    <path d="M244 62 L244 18 H265 A13 13 0 0 1 265 44 H244"/>
+    <path d="M304 62 L324 18 L344 62"/>
+  </g>
+
+  <!-- Accent dots inside the A's -->
+  <circle cx="198" cy="49" r="5" fill="#7a5cff"/>
+  <circle cx="324" cy="49" r="5" fill="#2fd9c4"/>
+</svg>

@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>About harness-scaling</title>
-  <meta name="description" content="Overall harness-scaling architecture for LLM behavior experiments in a benchmark loop.">
-  <link rel="icon" href="assets/favicon-sl.svg?v=20260721-sl" type="image/svg+xml">
-  <link rel="stylesheet" href="assets/style.css?v=20260721-sl">
+  <title>About CAPA</title>
+  <meta name="description" content="Overall CAPA architecture for LLM behavior experiments in a benchmark loop.">
+  <link rel="icon" href="assets/favicon.svg?v=20260726-capa" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/style.css?v=20260726-capa">
 </head>
 <body>
   <nav class="nav" aria-label="Main navigation">
     <div class="nav-inner">
-      <a class="brand" href="index.html" aria-label="harness-scaling"><span class="brand-mark" aria-hidden="true"></span><span>harness-scaling</span></a>
+      <a class="brand" href="index.html" aria-label="CAPA"><img class="brand-logo" src="assets/logo.svg" alt="CAPA"></a>
       <div class="links">
         <a href="index.html">Overview</a>
         <a href="overview.html" aria-current="page">About</a>
@@ -30,8 +30,8 @@
     </section>
     <div class="doc-layout">
       <aside class="side-toc" aria-label="Page table of contents">
-        <a href="#short">Short version</a>
         <a href="#main-idea">Main idea</a>
+        <a href="#short">Short version</a>
         <a href="#why-not-change-benchmark">Why not change the benchmark</a>
         <a href="#practical-stack">Practical stack</a>
         <a href="#research-directions">Research directions</a>
@@ -48,15 +48,10 @@
         <a href="#summary">Summary</a>
       </aside>
       <article class="doc">
-        <section id="short"><h2>Short version</h2>
-          <p>The project builds infrastructure for experimenting with language-model behavior inside a benchmark loop. The main practical target is GAIA through InspectAI, but the architecture is not tightly coupled to GAIA.</p>
-          <p>The project has two major parts:</p>
-          <pre><code class="language-text">1. Test-Time Scaling Proxy
-2. GAIA Experiment Launcher</code></pre>
-          <p>The proxy adds experimental techniques on top of an OpenAI-compatible model. The launcher makes the full pipeline reproducible across different inference backends and compute environments.</p>
-        </section>
         <section id="main-idea"><h2>Main idea</h2>
-          <p>The goal is to make LLM benchmark experiments faster, more modular, and reproducible. Instead of modifying the benchmark runner for every technique, the project introduces an intermediate layer:</p>
+          <p>We want more evidence about how scaling inference-time compute changes the performance of LLMs. The target is a relationship comparable to OpenAI's o1 and o3 results, where they see a log-linear relationship between inference compute and performance.</p>
+          <p>So the project pushes for the strongest possible agentic performance using test-time techniques &mdash; Budget Tracker, Structured Notes, Best-of-N, and others &mdash; so that the resulting scaling laws are measured against strong agents rather than naive baselines.</p>
+          <p>Measuring this cleanly means making LLM benchmark experiments faster, more modular, and reproducible. Instead of modifying the benchmark runner for every technique, the project introduces an intermediate layer:</p>
           <pre><code class="language-text">Benchmark runner -> Proxy with techniques -> Base model backend</code></pre>
           <p>This layer makes it possible to experiment with model behavior during benchmark execution:</p>
           <ul>
@@ -74,20 +69,16 @@
             <li>preserve run configuration.</li>
           </ul>
         </section>
+        <section id="short"><h2>Short version</h2>
+          <p>The project builds infrastructure for experimenting with language-model behavior inside a benchmark loop. The main practical target is GAIA through InspectAI, but the architecture is not tightly coupled to GAIA.</p>
+          <p>The project has two major parts:</p>
+          <pre><code class="language-text">1. Test-Time Scaling Proxy
+2. GAIA Experiment Launcher</code></pre>
+          <p>The proxy adds experimental techniques on top of an OpenAI-compatible model. The launcher makes the full pipeline reproducible across different inference backends and compute environments.</p>
+        </section>
         <section id="why-not-change-benchmark"><h2>Why not change the benchmark</h2>
-          <p>The benchmark runner should stay clean.</p>
-          <p>If every technique is embedded directly into benchmark code, several problems appear:</p>
-          <ul>
-            <li>the benchmark becomes harder to maintain;</li>
-            <li>techniques become tied to a specific benchmark implementation;</li>
-            <li>techniques become harder to compare;</li>
-            <li>turning one technique off and another on becomes harder;</li>
-            <li>the approach becomes harder to transfer to another benchmark;</li>
-            <li>results become harder to reproduce;</li>
-            <li>experiment code gets mixed with scoring and task execution.</li>
-          </ul>
-          <p>That is why the project moves experimental logic into the proxy layer.</p>
-          <p>The proxy owns experimental logic. The benchmark runs tasks and scores answers. The backend loads the model and serves responses.</p>
+          <p>The benchmark runner should stay clean. Embedding techniques directly into benchmark code makes it harder to maintain, to compare and toggle techniques, to reproduce results, and to reuse the approach on another benchmark.</p>
+          <p>So experimental logic lives in the proxy layer: the proxy owns the techniques, the benchmark runs and scores tasks, and the backend serves the model.</p>
         </section>
         <section id="practical-stack"><h2>Practical stack</h2>
           <pre><code class="language-text">GAIA Benchmark
@@ -140,30 +131,8 @@ Local / Colab / Mac / GPU inference</code></pre>
           <p>The project is not limited to a strict definition of test-time scaling. Context-saving techniques also matter because real compute is limited and models can be small.</p>
         </section>
         <section id="context-optimization"><h2>Context optimization</h2>
-          <p>Context optimization is an important part of the project.</p>
-          <p>In GAIA-like tasks, history can grow quickly:</p>
-          <ul>
-            <li>system prompt;</li>
-            <li>user task;</li>
-            <li>assistant reasoning;</li>
-            <li>tool calls;</li>
-            <li>tool results;</li>
-            <li>intermediate observations;</li>
-            <li>retries;</li>
-            <li>branch histories.</li>
-          </ul>
-          <p>For models with a small context window, this becomes a bottleneck. Even if the model could solve the task, it can lose important information, overflow the context, or degrade on a long history.</p>
-          <p>The project therefore supports techniques that:</p>
-          <ul>
-            <li>compress long tool results;</li>
-            <li>extract facts;</li>
-            <li>save structured notes;</li>
-            <li>remove irrelevant history;</li>
-            <li>isolate branches;</li>
-            <li>reduce context between attempts;</li>
-            <li>manage accumulated messages;</li>
-            <li>help small models work more effectively on benchmark tasks.</li>
-          </ul>
+          <p>In GAIA-like tasks the history grows fast &mdash; prompts, reasoning, tool calls and results, retries, branch histories. For a small context window that becomes a bottleneck: the model can lose information, overflow the context, or degrade on a long history.</p>
+          <p>So the project supports techniques that compress tool results, extract facts, save structured notes, drop irrelevant history, and isolate branches &mdash; helping small models work effectively on benchmark tasks.</p>
         </section>
         <section id="small-models"><h2>Why small models matter</h2>
           <p>The project reflects a practical situation: access to large closed models or a large GPU cluster is not always available.</p>
@@ -252,17 +221,7 @@ BASE_MODEL_NAME=qwen3.5-9b-q4</code></pre>
           <p>This structure makes the run understandable: one file describes the experiment, and another describes the concrete backend.</p>
         </section>
         <section id="audience"><h2>Audience</h2>
-          <p>The project is intended for:</p>
-          <ul>
-            <li>LLM behavior researchers;</li>
-            <li>teams working with benchmarks;</li>
-            <li>developers of test-time scaling techniques;</li>
-            <li>users of local open-source models;</li>
-            <li>people who want to run GAIA without closed APIs;</li>
-            <li>people working with limited compute;</li>
-            <li>people comparing inference-time techniques;</li>
-            <li>people who want to separate benchmark code from experimental code.</li>
-          </ul>
+          <p>The project is aimed at LLM-behavior researchers and benchmark teams &mdash; anyone developing or comparing inference-time techniques, running GAIA on local open-source models under limited compute, and wanting benchmark code kept separate from experimental code.</p>
         </section>
         <section id="limitations"><h2>Limitations</h2>
           <p>The project is aimed at research benchmark runs, not production serving.</p>
@@ -276,22 +235,12 @@ BASE_MODEL_NAME=qwen3.5-9b-q4</code></pre>
             <li>flexibility matters;</li>
             <li>latency is not the only primary criterion.</li>
           </ul>
+          <p>Compute is still the main limit: the strongest combination of features has not been run end-to-end yet, so the best achievable agentic performance is likely higher than the current results show.</p>
           <p>The project also does not promise support for every possible scaffold. It is best suited for techniques that can be expressed through lifecycle hooks and a middleware chain.</p>
         </section>
         <section id="summary"><h2>Summary</h2>
-          <p>The project creates practical infrastructure for LLM experiments inside a benchmark loop.</p>
-          <p>It combines:</p>
-          <ul>
-            <li>an OpenAI-compatible proxy;</li>
-            <li>a hook-based micro-framework;</li>
-            <li>feature-based technique activation;</li>
-            <li>task-local state;</li>
-            <li>context-saving and test-time scaling approaches;</li>
-            <li>a launcher for GAIA / InspectAI;</li>
-            <li>support for different inference backends;</li>
-            <li>reproducible configuration.</li>
-          </ul>
-          <p>The main idea is to make new model-behavior techniques easy to add, run, and compare without rewriting the benchmark runner and without binding the system to one inference backend.</p>
+          <p>CAPA is practical infrastructure for pushing and measuring agentic performance inside a benchmark loop. An OpenAI-compatible proxy with a hook-based micro-framework lets techniques &mdash; context saving, test-time scaling, feature-based activation with task-local state &mdash; be switched on and combined, while a GAIA / InspectAI launcher keeps runs reproducible across inference backends.</p>
+          <p>The goal is to make new model-behavior techniques easy to add, run, and compare &mdash; so scaling-law estimates for agents come from the strongest setup we can build rather than a naive baseline, without rewriting the benchmark or binding the system to one backend.</p>
         </section>
       </article>
     </div>

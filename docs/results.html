@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Experiment Results harness-scaling</title>
-  <meta name="description" content="harness-scaling experiment results: baseline, technique comparison, cost, and Budget Tracker analysis.">
-  <link rel="icon" href="assets/favicon-sl.svg?v=20260721-sl" type="image/svg+xml">
-  <link rel="stylesheet" href="assets/style.css?v=20260721-sl">
+  <title>Experiment Results CAPA</title>
+  <meta name="description" content="CAPA experiment results: baseline, technique comparison, cost, and Budget Tracker analysis.">
+  <link rel="icon" href="assets/favicon.svg?v=20260726-capa" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/style.css?v=20260726-capa">
 </head>
 <body>
   <nav class="nav" aria-label="Main navigation">
     <div class="nav-inner">
-      <a class="brand" href="index.html" aria-label="harness-scaling"><span class="brand-mark" aria-hidden="true"></span><span>harness-scaling</span></a>
+      <a class="brand" href="index.html" aria-label="CAPA"><img class="brand-logo" src="assets/logo.svg" alt="CAPA"></a>
       <div class="links">
         <a href="index.html">Overview</a>
         <a href="overview.html">About</a>
@@ -32,23 +32,23 @@
       <aside class="side-toc" aria-label="Page table of contents">
         <a href="#summary">Result summary</a>
         <a href="#baseline">Baseline run</a>
-        <a href="#compare">Technique comparison</a>
+        <a href="#compare">Level 1 (53 tasks)</a>
         <a href="#cost">Cost</a>
         <a href="#usage">Real usage</a>
-        <a href="#budget-tracker">Budget Tracker</a>
-        <a href="#schemes">Schemes and tables</a>
+        <a href="#level2">Level 2 (86 tasks)</a>
         <a href="#limits">Limitations</a>
         <a href="#notes">Conclusions</a>
       </aside>
       <article class="doc">
         <section id="summary"><h2>Result summary</h2>
-          <p>The experiment checks whether agent behavior on GAIA can be improved with additional inference-time compute: Best-of-N, voting, judge/verification, context management, and budget-aware techniques. Current setup: GAIA Level 1, 53 tasks, Qwen 3.5 9B, and the project launcher infrastructure.</p>
+          <p><strong>GAIA</strong> is a benchmark of real-world assistant tasks that require multi-step reasoning, tool use, and web browsing, with short exact answers that make scoring unambiguous. Tasks come in three difficulty levels; this project uses Level 1 and the harder Level 2.</p>
+          <p>The experiment checks whether agent behavior on GAIA can be improved with additional inference-time compute: Best-of-N, voting, judge/verification, context management, and budget-aware techniques. Current setup: GAIA Level 1 (53 tasks) and the harder Level 2 (86 tasks), Qwen 3.5 9B, and the project launcher infrastructure. Pooling both levels lets us test statistical significance.</p>
           <div class="result-grid">
-            <div class="result-card"><strong>0.453</strong><span>Baseline accuracy over all 53 GAIA Level 1 tasks.</span></div>
-            <div class="result-card"><strong>4.5 min</strong><span>Average baseline time per task.</span></div>
-            <div class="result-card"><strong>509k</strong><span>Average baseline token usage per task.</span></div>
-            <div class="result-card"><strong>+0.14</strong><span>Best accuracy gain: BUDGET_TRACKER.</span></div>
-            <div class="result-card"><strong>+0.10</strong><span>Second-best result: VOI / inference-time budget control.</span></div>
+            <div class="result-card"><strong>0.453</strong><span>Level 1 baseline accuracy over all 53 GAIA tasks.</span></div>
+            <div class="result-card"><strong>0.265</strong><span>Level 2 baseline accuracy over the harder 86-task set.</span></div>
+            <div class="result-card"><strong>509k</strong><span>Average baseline token usage per task (Level 1).</span></div>
+            <div class="result-card"><strong>+0.14</strong><span>Best Level 1 accuracy gain: BUDGET_TRACKER.</span></div>
+            <div class="result-card"><strong>p=0.04</strong><span>BUDGET_TRACKER is the only technique significant when pooling Level 1 + Level 2 (&Delta;+0.10).</span></div>
             <div class="result-card"><strong>+0.06</strong><span>STRUCTURED_NOTES improves accuracy while reducing cost.</span></div>
           </div>
         </section>
@@ -56,7 +56,7 @@
           <p>The baseline was evaluated on all 53 GAIA Level 1 tasks. Mean accuracy was 0.453, mean runtime was 4.5 minutes per task, and mean token usage was 509k tokens per task.</p>
           <figure class="figure"><img src="assets/results/baseline-all-53-tasks.png" alt="Baseline on 53 tasks: accuracy, time, and token usage per task"><figcaption class="figure-caption">Baseline over all 53 tasks with correctness, time, and token usage. Dashed lines show mean values.</figcaption></figure>
         </section>
-        <section id="compare"><h2>Technique comparison</h2>
+        <section id="compare"><h2>Level 1 (53 tasks)</h2>
           <p>The comparison shows that test-time techniques are not uniformly beneficial. The best gains came from BUDGET_TRACKER, VOI, HIAGENT, STRUCTURED_NOTES, and BAVT. SHORT_MAK and ACON were neutral. ADAPTIVE_BON, CONTEXT_COMPACTION, SELF_CONSISTENCY, RESUM, and RANKED_VOTING reduced accuracy in the current setup.</p>
           <table class="data-table">
             <thead><tr><th>Technique</th><th>Available tasks</th><th>Accuracy delta</th><th>Observation</th></tr></thead>
@@ -81,34 +81,30 @@
           <p>The efficiency quadrant shows the trade-off between accuracy delta and overhead. STRUCTURED_NOTES is a strong lightweight technique: it improves accuracy without extra token/time budget. HIAGENT also improves accuracy with low overhead. BUDGET_TRACKER gives the largest gain but requires additional compute.</p>
           <figure class="figure"><img src="assets/results/feature-efficiency-quadrant.png" alt="Feature efficiency quadrant"><figcaption class="figure-caption">Feature Efficiency Quadrant with accuracy gain vs token/time overhead.</figcaption></figure>
         </section>
-        <section id="budget-tracker"><h2>Budget Tracker</h2>
-          <p>The Budget Tracker chart shows success per task, cumulative tokens, max effective input tokens, context-window share, and working time. Dashed lines in the middle charts mark model context windows: baseline 256k and BUDGET_TRACKER 128k.</p>
-          <figure class="figure"><img src="assets/results/budget-tracker-token-budget-success.png" alt="Budget tracker: token budget vs success"><figcaption class="figure-caption">BUDGET_TRACKER with token budget vs success, cumulative tokens, effective input, context ratio, and working time.</figcaption></figure>
-        </section>
-        <section id="schemes"><h2>Schemes and tables</h2>
-          <p>The diagrams below connect the results with the proxy architecture and the technique selection process.</p>
-          <figure class="figure narrow"><img src="assets/results/technique-interface.png" alt="Technique interface code example"><figcaption class="figure-caption">A technique is implemented as a class with lifecycle hooks.</figcaption></figure>
-          <figure class="figure narrow"><img src="assets/results/benchmark-hook-points.png" alt="Benchmark hook points scheme"><figcaption class="figure-caption">Benchmark hook points covering before generate, after tool call, after tool result, and after final answer.</figcaption></figure>
-          <figure class="figure narrow"><img src="assets/results/technique-literature-roles.png" alt="Technique literature roles table"><figcaption class="figure-caption">Rollout and context-window techniques from the literature review.</figcaption></figure>
-          <figure class="figure narrow"><img src="assets/results/budget-techniques-table.png" alt="Budget techniques table"><figcaption class="figure-caption">Techniques for tool budget, token budget, and resource budget.</figcaption></figure>
+        <section id="level2"><h2>Level 2 (86 tasks)</h2>
+          <p>We reran the feature-vs-baseline analysis on the harder GAIA <strong>Level 2</strong> set (86 tasks, baseline accuracy 0.265). On matched tasks, only BUDGET_TRACKER (+0.08) and HIAGENT (+0.06) improve over baseline, while VOI, SHORT_MAK, and ADAPTIVE_BON regress — a stricter picture than Level 1.</p>
+          <figure class="figure"><img src="assets/results/level2-feature-vs-baseline-accuracy.png" alt="Level 2 feature vs baseline accuracy on 86 GAIA tasks"><figcaption class="figure-caption">Level 2 (86 GAIA tasks): feature vs baseline accuracy on matched tasks. Green bars improve, red bars regress; baseline accuracy is 0.265.</figcaption></figure>
+          <p>Pooling Level 1 and Level 2 into paired per-task outcomes lets us test significance with McNemar's exact test and a bootstrap 95% CI. Only BUDGET_TRACKER survives: +0.10 accuracy at p=0.04.</p>
+          <figure class="figure"><img src="assets/results/pooled-accuracy-delta-significance.png" alt="Pooled Level 1 and Level 2 accuracy delta with 95% CI and significance"><figcaption class="figure-caption">Pooled Level 1 + Level 2 accuracy delta with 95% bootstrap CIs and McNemar significance. Only BUDGET_TRACKER is significant at p&lt;0.05 (&Delta;+0.10).</figcaption></figure>
         </section>
         <section id="limits"><h2>Limitations</h2>
           <ul>
             <li>Limited compute budget.</li>
-            <li>Only GAIA Level 1 tasks were evaluated.</li>
+            <li>Level 2 coverage is still partial (about 82–85 of 86 tasks per feature) and spans fewer techniques than Level 1.</li>
             <li>A single small model, Qwen 3.5 9B, was used.</li>
             <li>Only one dataset is considered.</li>
-            <li>Statistical significance without Level 2 remains unclear.</li>
+            <li>Even pooled across Level 1 and Level 2, only BUDGET_TRACKER reaches p&lt;0.05 (McNemar); other effects stay within noise.</li>
           </ul>
         </section>
         <section id="notes"><h2>Conclusions</h2>
-          <p>Technique selection can increase benchmark accuracy. This suggests that naive scaling-law estimates for agentic inference may be systematically low if they ignore inference-time interventions.</p>
+          <p>Technique selection can increase benchmark accuracy, and the effect holds up under scrutiny for at least one technique. This suggests that naive scaling-law estimates for agentic inference may be systematically low if they ignore inference-time interventions.</p>
           <ul>
-            <li>BUDGET_TRACKER produced the largest accuracy gain: +0.14.</li>
-            <li>VOI produced +0.10 accuracy but needs careful accounting for time overhead.</li>
-            <li>STRUCTURED_NOTES is especially practical: +0.06 accuracy while reducing mean time and staying close to baseline token usage.</li>
-            <li>Naive SELF_CONSISTENCY and RANKED_VOTING can regress in this setup.</li>
-            <li>Next steps include testing technique combinations, writing a LessWrong post, and extracting reusable components: <code>gaia-experiment-launcher</code> and <code>tts-proxy-framework</code>.</li>
+            <li>BUDGET_TRACKER is the standout: +0.14 on Level 1, +0.08 on the harder Level 2, and the only technique that stays significant when pooling both levels (&Delta;+0.10, McNemar p=0.04 over 114 paired tasks).</li>
+            <li>HIAGENT is the most consistent runner-up, improving on both Level 1 (+0.08) and Level 2 (+0.06), though pooled it does not reach significance (p=0.15).</li>
+            <li>STRUCTURED_NOTES stays practical on Level 1: +0.06 accuracy while reducing mean time and staying close to baseline token usage.</li>
+            <li>Level 2 is stricter — VOI, SHORT_MAK, and ADAPTIVE_BON that looked neutral or positive on Level 1 regress on the harder set, and naive SELF_CONSISTENCY and RANKED_VOTING remain weak.</li>
+            <li>Pooled across 1003 paired tasks, most gains fall within the 95% bootstrap CI, so single-level results should be read as directional rather than proven.</li>
+            <li>Next steps include testing technique combinations, widening Level 2 coverage, writing a LessWrong post, and extracting reusable components: <code>gaia-experiment-launcher</code> and <code>tts-proxy-framework</code>.</li>
           </ul>
         </section>
       </article>
