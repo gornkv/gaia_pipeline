@@ -7,6 +7,7 @@ import svc_scaffold.openai_helpers as h
 
 TOOL_LIMIT = int(os.getenv("BUDGET_TRACKER_TOOL_LIMIT", "30"))
 CTX_LIMIT = int(os.getenv("BASE_MODEL_CTX_LIMIT", "262144"))
+OUTPUT_RESERVE = 4096
 
 
 def _content_text(value: Any) -> str:
@@ -62,7 +63,7 @@ class Breakpoints:
             f"tool calls used: {tool_calls}; "
             f"tool calls remaining: {max(TOOL_LIMIT - tool_calls, 0)}; "
             f"context used: {context} tokens; "
-            f"context remaining: {max(CTX_LIMIT - context, 0)} tokens"
+            f"context remaining: {max(CTX_LIMIT - context - OUTPUT_RESERVE, 0)} tokens"
         )
         if last_tool_result_tokens:
             status += f"; latest tool result(s) about {last_tool_result_tokens} tokens"

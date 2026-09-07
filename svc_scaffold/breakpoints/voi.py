@@ -7,6 +7,7 @@ import svc_scaffold.openai_helpers as h
 
 TOOL_BUDGET = int(os.getenv("VOI_TOOL_BUDGET", "30"))
 CTX_LIMIT = int(os.getenv("BASE_MODEL_CTX_LIMIT", "262144"))
+OUTPUT_RESERVE = 4096
 
 
 def _content_text(value: Any) -> str:
@@ -57,8 +58,8 @@ class Breakpoints:
             + self.store.get("completion_tokens", 0)
             + self.store.get("last_tool_result_tokens", 0)
         )
-        context_remaining = max(CTX_LIMIT - context, 0)
-        context_fraction = context / CTX_LIMIT if CTX_LIMIT > 0 else 1.0
+        context_remaining = max(CTX_LIMIT - context - OUTPUT_RESERVE, 0)
+        context_fraction = (context + OUTPUT_RESERVE) / CTX_LIMIT if CTX_LIMIT > 0 else 1.0
 
         if tools_remaining > 5 and context_fraction < 0.75:
             return payload
