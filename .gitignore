@@ -4,3 +4,4 @@ _state/
 .venv
 playwright-browsers/
 __pycache__/
+/tests/
