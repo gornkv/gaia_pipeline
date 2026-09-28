@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+# short-m@k (arXiv 2505.17813): among majority answers, prefer the SHORTEST chain.
+# Chain length counts reasoning_content + content so it measures the real
+# reasoning length on reasoning models (Qwen routes CoT to reasoning_content).
+
 import os
 from collections import Counter
 from typing import Any
@@ -18,7 +22,8 @@ def _extract_answer(response: dict) -> str:
 
 
 def _chain_length(response: dict) -> int:
-    return len(h.message(response).get("content") or "")
+    msg = h.message(response)
+    return len(msg.get("content") or "") + len(msg.get("reasoning_content") or "")
 
 
 class Breakpoints:

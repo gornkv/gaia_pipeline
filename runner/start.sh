@@ -97,7 +97,7 @@ install_environment() {
   "${VENV_PYTHON}" -m pip install \
     pip wheel setuptools "inspect-evals[gaia]" inspect-tool-support openai playwright \
     -r "${REPO_ROOT}/svc_scaffold/requirement.txt"
-  "${REPO_ROOT}/.venv/bin/inspect-tool-support" post-install
+  "${REPO_ROOT}/.venv/bin/inspect-tool-support" post-install --no-web-browser
   "${VENV_PYTHON}" -m playwright install chromium
   check_evironment
 }

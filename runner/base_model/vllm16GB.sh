@@ -1,7 +1,6 @@
 #!/bin/sh
 set -aue
 
-pkill -f '[v]llm' 2>/dev/null && sleep 2
 
 "${VENV_PYTHON}" -m pip install "vllm>=0.22.1" ninja
 
@@ -19,26 +18,20 @@ PY
 )"
 LD_LIBRARY_PATH="${NVIDIA_LIB_PATHS}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 PATH="${REPO_ROOT}/.venv/bin:${PATH}"
-VLLM_USE_TRITON_AWQ=1
 
-"${REPO_ROOT}/.venv/bin/vllm" serve "QuantTrio/Qwen3.5-9B-AWQ" \
+"${REPO_ROOT}/.venv/bin/vllm" serve "Qwen/Qwen3.5-9B" \
   --served-model-name "${BASE_MODEL_NAME}" \
   --api-key "${BASE_MODEL_API_KEY}" \
   --host "0.0.0.0" \
   --port "18081" \
-  --dtype float16 \
-  --language-model-only \
-  --max-model-len "8192" \
-  --max-num-seqs "1" \
-  --max-num-batched-tokens "1024" \
-  --gpu-memory-utilization "0.90" \
-  --block-size "32" \
-  --disable-custom-all-reduce \
+  --dtype bfloat16 \
+  --max-model-len 131072 \
+  --max-num-seqs 64 \
+  --gpu-memory-utilization 0.90 \
   --reasoning-parser qwen3 \
   --enable-auto-tool-choice \
   --tool-call-parser qwen3_coder \
   --trust-remote-code \
-  --enforce-eager \
   > "${REPO_ROOT}/_state/runner/${BASE_MODEL_RUNNER_TYPE}.stdout" \
   2> "${REPO_ROOT}/_state/runner/${BASE_MODEL_RUNNER_TYPE}.stderr" & pid=$!
 echo "${pid}" >> "${PID_FILE}"

@@ -1,26 +1,18 @@
 from __future__ import annotations
 
-# HiAgent (arxiv 2408.09559)
-# Hierarchical working memory management via subgoals.
-# Prompts model to formulate subgoals before acting, and summarizes
-# observations when subgoals change.
+# HiAgent (arxiv 2408.09559) — subgoal prompting + observation summarization when
+# the subgoal changes. The subgoal-summariser runs on the strong HELPER model
+# (helper.py) when configured, else the eval model.
 
-import hashlib
-import json
-import re
 from typing import Any
 
 import svc_scaffold.openai_helpers as h
+from svc_scaffold.helper import helper_completion
 
 SUBGOAL_PROMPT = (
     "Before taking any action, clearly state your current subgoal in one sentence. "
-    "Choose a bounded step that you expect to complete in roughly 1 to 15 tool calls; split broader work "
-    "into smaller subgoals. Format: SUBGOAL: <one sentence description>. Reuse the exact same SUBGOAL "
-    "line while continuing the same subgoal; change it only after that subgoal is completed or abandoned."
+    "Format: SUBGOAL: <one sentence description>"
 )
-
-SUBGOAL_PATTERN = re.compile(r"(?:^|\n)\s*SUBGOAL:\s*([^\r\n]+)", re.IGNORECASE)
-SUMMARY_MESSAGE_NAME = "hiagent_summary"
 
 
 class Breakpoints:
@@ -29,23 +21,17 @@ class Breakpoints:
         self._current_subgoal: str = ""
         self._subgoal_steps: int = 0
         self._subgoal_start_idx: int = 0
-        self._summary_cache: dict[str, str] = {}
         self.model_client = model_client
 
     @staticmethod
     def feature_name():
         return "FEATURE_HIAGENT"
 
-    def _ensure_subgoal_prompt(self, payload):
+    def before_task_call(self, payload):
+        self._current_subgoal = ""
+        self._subgoal_steps = 0
+        self._subgoal_start_idx = 0
         msgs = list(h.messages(payload))
-        if any(
-            isinstance(msg, dict)
-            and msg.get("role") == "system"
-            and SUBGOAL_PROMPT in str(msg.get("content") or "")
-            for msg in msgs
-        ):
-            return payload
-
         injected = False
         for i, msg in enumerate(msgs):
             if isinstance(msg, dict) and msg.get("role") == "system":
@@ -59,15 +45,8 @@ class Breakpoints:
         print("[HIAGENT] injected subgoal prompt", flush=True)
         return payload
 
-    def before_task_call(self, payload):
-        self._current_subgoal = ""
-        self._subgoal_steps = 0
-        self._subgoal_start_idx = 0
-        self._summary_cache = {}
-        return self._ensure_subgoal_prompt(payload)
-
     def before_chat_message(self, payload):
-        return self._ensure_subgoal_prompt(payload)
+        return payload
 
     def after_chat_message(self, response):
         return response, None
@@ -80,112 +59,59 @@ class Breakpoints:
         )
         for item in messages:
             if isinstance(item, dict):
-                role = str(item.get("role") or "unknown").upper()
-                prompt += f"{role}: {item.get('content', '')}\n"
-                if isinstance(item.get("tool_calls"), list):
-                    prompt += (
-                        "TOOL_CALLS: "
-                        + json.dumps(item["tool_calls"], ensure_ascii=False, sort_keys=True, default=str)
-                        + "\n"
-                    )
-                if isinstance(item.get("function_call"), dict):
-                    prompt += (
-                        "FUNCTION_CALL: "
-                        + json.dumps(item["function_call"], ensure_ascii=False, sort_keys=True, default=str)
-                        + "\n"
-                    )
-                if item.get("tool_call_id"):
-                    prompt += f"TOOL_CALL_ID: {item['tool_call_id']}\n"
+                prompt += f"{item.get('role', '').upper()}: {item.get('content', '')}\n"
             else:
                 prompt += f"UNKNOWN: {item}\n"
-
-        payload = {
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.0,
-            "max_tokens": 512,
-        }
-        if not self.model_client:
-            return f"[HiAgent] Completed subgoal '{subgoal}'."
-        result = await self.model_client.chat_completions(payload)
-        content = (h.message(result).get("content") or "").strip()
+        content = await helper_completion(prompt, 1024, self.model_client)
         return content or f"[HiAgent] Completed subgoal '{subgoal}'."
-
-    @staticmethod
-    def _subgoal_transitions(messages: list[Any]) -> list[tuple[int, str]]:
-        transitions: list[tuple[int, str]] = []
-        for i, msg in enumerate(messages):
-            if (
-                not isinstance(msg, dict)
-                or msg.get("role") != "assistant"
-                or str(msg.get("name") or "").endswith("_summary")
-            ):
-                continue
-            content = msg.get("content")
-            if not isinstance(content, str):
-                continue
-            matches = SUBGOAL_PATTERN.findall(content)
-            if not matches:
-                continue
-            candidate = matches[-1].strip()
-            if candidate and (not transitions or candidate != transitions[-1][1]):
-                transitions.append((i, candidate))
-        return transitions
-
-    @staticmethod
-    def _summary_key(subgoal: str, fragment: list[Any]) -> str:
-        serialized = json.dumps(
-            {"subgoal": subgoal, "messages": fragment},
-            ensure_ascii=False,
-            sort_keys=True,
-            default=str,
-        )
-        return hashlib.sha256(serialized.encode()).hexdigest()
 
     async def after_tool_call(self, payload):
         msgs = list(h.messages(payload))
 
-        transitions = self._subgoal_transitions(msgs)
-        if not transitions:
-            self._subgoal_steps += 1
-            return payload
+        new_subgoal = ""
+        new_subgoal_start = 0
+        prev_subgoal = ""
+        prev_subgoal_start = 0
+        for i, msg in enumerate(msgs):
+            if isinstance(msg, dict) and msg.get("role") == "assistant":
+                content = msg.get("content", "")
+                if isinstance(content, str) and "SUBGOAL:" in content:
+                    candidate = content.split("SUBGOAL:")[-1].split("\n")[0].strip()
+                    if candidate != new_subgoal:
+                        prev_subgoal = new_subgoal
+                        prev_subgoal_start = new_subgoal_start
+                        new_subgoal = candidate
+                        new_subgoal_start = i
 
-        new_subgoal_start, new_subgoal = transitions[-1]
-        created_summaries = 0
-        if len(transitions) > 1:
-            compacted = list(msgs[: transitions[0][0]])
-            for transition_idx in range(len(transitions) - 1):
-                fragment_start, completed_subgoal = transitions[transition_idx]
-                fragment_end = transitions[transition_idx + 1][0]
-                fragment = msgs[fragment_start:fragment_end]
-                cache_key = self._summary_key(completed_subgoal, fragment)
-                summary_text = self._summary_cache.get(cache_key)
-                if summary_text is None:
-                    summary_text = await self._summarize_subgoal(completed_subgoal, fragment)
-                    self._summary_cache[cache_key] = summary_text
-                    created_summaries += 1
-                compacted.append(
-                    {
-                        "role": "assistant",
-                        "name": SUMMARY_MESSAGE_NAME,
-                        "content": f"[HiAgent summary] {summary_text}",
-                    }
-                )
-            compacted.extend(msgs[new_subgoal_start:])
-            payload = dict(payload)
-            payload["messages"] = compacted
-            new_subgoal_start = len(compacted) - len(msgs[new_subgoal_start:])
-
-        if new_subgoal != self._current_subgoal:
-            previous_subgoal = self._current_subgoal
+        if new_subgoal and new_subgoal != self._current_subgoal:
+            if self._current_subgoal and prev_subgoal == self._current_subgoal:
+                fragment = msgs[prev_subgoal_start:new_subgoal_start]
+                if fragment:
+                    summary_text = await self._summarize_subgoal(self._current_subgoal, fragment)
+                    head = list(msgs[:prev_subgoal_start])
+                    lead = 0
+                    while (
+                        lead < len(head)
+                        and isinstance(head[lead], dict)
+                        and head[lead].get("role") == "system"
+                    ):
+                        lead += 1
+                    # the summary is context, not dialogue: it belongs in the
+                    # leading system block, not where the fragment used to be
+                    compacted = head[:lead]
+                    compacted.append({"role": "system", "content": f"[HiAgent summary] {summary_text}"})
+                    compacted.extend(head[lead:])
+                    compacted.extend(msgs[new_subgoal_start:])
+                    payload = dict(payload)
+                    payload["messages"] = compacted
+                    new_subgoal_start = prev_subgoal_start + 1
+                    print(
+                        f"[HIAGENT] subgoal changed: {self._current_subgoal} -> {new_subgoal}, compressed previous fragment",
+                        flush=True,
+                    )
             self._current_subgoal = new_subgoal
             self._subgoal_steps = 0
             self._subgoal_start_idx = new_subgoal_start
-            if previous_subgoal:
-                print(
-                    f"[HIAGENT] subgoal changed: {previous_subgoal} -> {new_subgoal}; "
-                    f"created {created_summaries} new summary(s)",
-                    flush=True,
-                )
         else:
             self._subgoal_steps += 1
         return payload
@@ -194,7 +120,6 @@ class Breakpoints:
         self._current_subgoal = ""
         self._subgoal_steps = 0
         self._subgoal_start_idx = 0
-        self._summary_cache = {}
         return response, None
 
     def before_tool_call(self, response):

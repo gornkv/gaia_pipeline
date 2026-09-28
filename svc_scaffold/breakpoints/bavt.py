@@ -77,5 +77,5 @@ class Breakpoints:
         return response, None
 
     def before_tool_call(self, response):
-        self.store["tool_calls_done"] = self.store.get("tool_calls_done", 0) + 1
+        self.store["tool_calls_done"] = self.store.get("tool_calls_done", 0) + (len(h.tool_calls(response)) or 1)
         return response

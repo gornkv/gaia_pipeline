@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 # Complexity-Based Consistency (arxiv 2210.00720)
-# Extends Self-Consistency: votes only among the most complex (longest)
-# reasoning chains, keeping a configurable fraction of the longest.
+# Extends Self-Consistency: votes only among the most complex (longest) reasoning
+# chains, keeping a configurable fraction of the longest.
+# Complexity counts reasoning_content + content so it measures the real reasoning
+# length on reasoning models (Qwen routes CoT to reasoning_content).
 
 import os
 from collections import Counter
@@ -16,7 +18,8 @@ RATIO = float(os.getenv("COMPLEXITY_CONSISTENCY_RATIO", "0.5"))
 
 
 def _complexity(response: dict) -> int:
-    return len(h.message(response).get("content", "") or "")
+    msg = h.message(response)
+    return len(msg.get("content") or "") + len(msg.get("reasoning_content") or "")
 
 
 def _extract_final_answer(response: dict) -> str:

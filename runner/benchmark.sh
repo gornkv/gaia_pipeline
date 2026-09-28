@@ -9,8 +9,7 @@ set -- eval "${GAIA_TASK}" \
   --max-connections "${GAIA_MAX_CONNECTIONS}" \
   -T "split=${GAIA_SPLIT}" \
   -T "max_attempts=${GAIA_MAX_ATTEMPTS}" \
-  -T "code_timeout=${GAIA_TOOL_TIMEOUT}" \
-  -T "time_limit=${GAIA_SAMPLE_TIME_LIMIT}" \
+  --time-limit "${GAIA_SAMPLE_TIME_LIMIT}" \
   --message-limit "${GAIA_MESSAGE_LIMIT}" \
   --no-fail-on-error
 

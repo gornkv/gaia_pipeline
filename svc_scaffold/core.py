@@ -76,14 +76,13 @@ class Scaffold:
 
     async def chat_completions(self, payload: dict[str, Any]) -> dict[str, Any]:
         key = task_key(payload)
-        task_start = h.is_task_start(payload)
 
         if h.has_tool_result(payload):
             for middleware in self.enabled_breakpoints(key, self.model_client):
                 result = middleware.after_tool_call(payload)
                 payload = await self._maybe_await(result)
 
-        if task_start:
+        if h.is_task_start(payload):
             for middleware in self.enabled_breakpoints(key, self.model_client):
                 result = middleware.before_task_call(payload)
                 payload = await self._maybe_await(result)

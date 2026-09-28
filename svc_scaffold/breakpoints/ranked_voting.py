@@ -88,10 +88,17 @@ class Breakpoints:
             "ranked best to worst:\nRANKED ANSWERS:\n"
             + "\n".join(f"{i+1}. [answer]" for i in range(NUM_CANDIDATES))
         )
+        target = None
         for i in range(len(msgs) - 1, -1, -1):
-            if isinstance(msgs[i], dict) and msgs[i].get("role") == "user":
-                msgs[i] = h.append_content(msgs[i], prompt)
+            role = msgs[i].get("role") if isinstance(msgs[i], dict) else None
+            if role in ("tool", "function"):
+                target = i
                 break
+            if role == "user":
+                target = i
+                break
+        if target is not None:
+            msgs[target] = h.append_content(msgs[target], prompt)
         payload = dict(payload)
         payload["messages"] = msgs
         return payload

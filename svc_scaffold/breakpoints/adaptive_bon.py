@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 # Adaptive Best-of-N / AdaBoN-style (arxiv 2505.12050)
-# Phase 1 – probe: run one rollout and estimate task complexity from
-#            response length (token count proxy).
-# Phase 2 – branches: run K additional rollouts, where K scales with
-#            complexity. Pick the longest (most complete) final response.
+# Phase 1 – probe: run one rollout, estimate task complexity from generation
+#            length (reasoning_content + content, so it works on reasoning models).
+# Phase 2 – branches: run K additional rollouts, K scales with complexity.
+# NOTE: final selection = longest generation is a proxy (the paper uses a reward
+# model). Kept as-is; only the length MEASUREMENT is made reasoning-aware here.
 
 import os
 from typing import Any
@@ -17,7 +18,8 @@ COMPLEXITY_THRESHOLD = int(os.getenv("ADAPTIVE_BON_COMPLEXITY_THRESHOLD", "400")
 
 
 def _complexity(response: dict) -> int:
-    return len(h.message(response).get("content") or "")
+    msg = h.message(response)
+    return len(msg.get("content") or "") + len(msg.get("reasoning_content") or "")
 
 
 class Breakpoints:

@@ -1,29 +1,40 @@
 from __future__ import annotations
 
-# ACON without fine-tuning (arxiv 2510.00615)
-# Injects pre-optimised compression guidelines into the system prompt.
-# Guidelines are stored at module level so they can be iteratively refined
-# across tasks within the same process (API-only, no fine-tuning).
+# ACON without fine-tuning (arXiv 2510.00615)
+# Compresses tool observations via a COMPRESSOR model guided by natural-language
+# compression guidelines, iteratively refined from over-budget tasks.
+# The compressor runs on the strong HELPER model (helper.py) when configured
+# (the paper used gpt-4.1) and falls back to the eval model otherwise.
 
+import hashlib
 import os
 from typing import Any
 
 import svc_scaffold.openai_helpers as h
+from svc_scaffold.helper import helper_completion
 
 TOKEN_BUDGET = int(os.getenv("ACON_TOKEN_BUDGET", "30000"))
+COMPRESS_THRESHOLD = int(os.getenv("ACON_COMPRESS_THRESHOLD", "1500"))
+COMPRESS_MAX_TOKENS = int(os.getenv("ACON_COMPRESS_MAX_TOKENS", "2048"))
 
-# Globally shared guidelines – updated after over-budget tasks
 _guidelines: list[str] = [
-    "Be maximally concise; omit filler words and verbose preambles.",
-    "Do not restate the question; go straight to reasoning.",
-    "Use abbreviations and symbols where unambiguous.",
-    "Chain reasoning steps inline; avoid bullet lists unless essential.",
-    "Provide the final answer in one short sentence.",
+    "Preserve every fact, number, name, date, URL, code snippet and state needed to continue the task.",
+    "Drop navigation chrome, boilerplate, ads, and repeated content.",
+    "Keep exact quotes/values verbatim; never paraphrase numbers or identifiers.",
+    "Summarize long prose into terse bullet points.",
+    "Remove anything already stated earlier in the conversation.",
 ]
+_compress_cache: dict[str, str] = {}
 
 
 def _guidelines_block() -> str:
     return "Compression guidelines:\n" + "\n".join(f"- {g}" for g in _guidelines)
+
+
+def _as_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    return str(content)
 
 
 class Breakpoints:
@@ -37,64 +48,83 @@ class Breakpoints:
 
     def before_task_call(self, payload):
         self.store["tokens_used"] = 0
-        msgs = list(h.messages(payload))
-        block = _guidelines_block()
-        injected = False
-        for i, msg in enumerate(msgs):
-            if isinstance(msg, dict) and msg.get("role") == "system":
-                msgs[i] = h.append_content(msg, "\n\n" + block)
-                injected = True
-                break
-        if not injected:
-            msgs.insert(0, {"role": "system", "content": block})
-        payload = dict(payload)
-        payload["messages"] = msgs
-        print(f"[ACON] injected guidelines ({'system msg updated' if injected else 'new system msg'}), budget={TOKEN_BUDGET}", flush=True)
         return payload
 
     def before_chat_message(self, payload):
         return payload
 
-    def after_tool_call(self, payload):
+    async def _compress_observation(self, text: str) -> str:
+        key = hashlib.md5(text.encode("utf-8", "ignore")).hexdigest()
+        if key in _compress_cache:
+            return _compress_cache[key]
+        prompt = (
+            "Compress the following tool observation for an LLM agent, following these guidelines:\n"
+            + _guidelines_block()
+            + "\n\nOutput ONLY the compressed observation, nothing else.\n\nObservation:\n"
+            + text
+        )
+        out = await helper_completion(prompt, COMPRESS_MAX_TOKENS, self.model_client)
+        if not out or len(out) >= len(text):
+            _compress_cache[key] = text
+            return text
+        _compress_cache[key] = out
+        return out
+
+    async def after_tool_call(self, payload):
+        msgs = list(h.messages(payload))
+        changed = 0
+        saved = 0
+        for i, m in enumerate(msgs):
+            if not (isinstance(m, dict) and m.get("role") in ("tool", "function")):
+                continue
+            text = _as_text(m.get("content"))
+            if len(text) <= COMPRESS_THRESHOLD:
+                continue
+            compressed = await self._compress_observation(text)
+            if compressed != text:
+                nm = dict(m)
+                nm["content"] = compressed
+                msgs[i] = nm
+                changed += 1
+                saved += len(text) - len(compressed)
+        if changed:
+            payload = dict(payload)
+            payload["messages"] = msgs
+            print(f"[ACON] compressed {changed} observation(s), saved ~{saved} chars", flush=True)
         return payload
 
     def after_chat_message(self, response):
         if response is not None:
             usage = response.get("usage") or {}
-            self.store["tokens_used"] = self.store.get("tokens_used", 0) + (usage.get("total_tokens") or 0)
+            ct = usage.get("completion_tokens")
+            if ct is None:
+                ct = usage.get("output_tokens")
+            if isinstance(ct, int):
+                self.store["tokens_used"] = self.store.get("tokens_used", 0) + ct
         return response, None
 
     async def _optimize_guidelines(self, tokens_used: int) -> None:
         prompt = (
-            f"These compression guidelines were used, but the response exceeded the token budget "
-            f"({tokens_used} tokens used, limit {TOKEN_BUDGET}).\n\n"
+            f"An agent's context exceeded the token budget ({tokens_used} used, limit {TOKEN_BUDGET}) "
+            "despite these compression guidelines being applied to its tool observations.\n\n"
             "Current guidelines:\n" + "\n".join(f"- {g}" for g in _guidelines) + "\n\n"
-            "Rewrite them to be stricter and more specific. "
+            "Rewrite them to compress more aggressively while never dropping facts needed to solve the task. "
             "Output ONLY the updated guidelines as a bullet list, one per line starting with '- '."
         )
-        payload = {
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.0,
-            "max_tokens": 256,
-        }
-        result = await self.model_client.chat_completions(payload)
-        content = (h.message(result).get("content") or "").strip()
+        content = await helper_completion(prompt, 400, self.model_client)
         if not content:
             return
         new_lines = [ln.lstrip("- ").strip() for ln in content.split("\n") if ln.strip().startswith("-")]
         if new_lines:
             _guidelines.clear()
             _guidelines.extend(new_lines[:6])
-            print(f"[ACON] guidelines updated via LLM ({len(_guidelines)} rules)", flush=True)
+            _compress_cache.clear()
+            print(f"[ACON] guidelines refined via helper ({len(_guidelines)} rules)", flush=True)
 
     async def after_task_call(self, response):
         tokens = self.store.get("tokens_used", 0)
         if tokens > TOKEN_BUDGET:
-            if self.model_client:
-                await self._optimize_guidelines(tokens)
-            else:
-                _guidelines[-1] = _guidelines[-1].rstrip(".") + " — be even briefer."
-                print(f"[ACON] over budget ({tokens}/{TOKEN_BUDGET}), tightened last guideline (no model_client)", flush=True)
+            await self._optimize_guidelines(tokens)
         else:
             print(f"[ACON] task done, tokens_used={tokens}/{TOKEN_BUDGET}", flush=True)
         self.store = {}

@@ -1,124 +1,114 @@
 from __future__ import annotations
 
+# Value-of-Information budget control (arXiv 2605.05701).
+# At each step a controller scores each action (RETRIEVE/DECOMPOSE/ANSWER) by
+# value-of-information given the current search state + remaining dual budget,
+# then steers the agent to the highest-VOI action. The VOI-scoring call runs on
+# the strong HELPER model (helper.py) when configured, else the eval model.
+
 import os
+import re
 from typing import Any
 
 import svc_scaffold.openai_helpers as h
+from svc_scaffold.helper import helper_completion
 
-TOOL_BUDGET = int(os.getenv("VOI_TOOL_BUDGET", "30"))
-CTX_LIMIT = int(os.getenv("BASE_MODEL_CTX_LIMIT", "262144"))
-OUTPUT_RESERVE = 4096
+TOOL_BUDGET = int(os.getenv("VOI_TOOL_BUDGET", "10"))
+TOKEN_BUDGET = int(os.getenv("VOI_TOKEN_BUDGET", "40000"))
+STATE_CHARS = int(os.getenv("VOI_STATE_CHARS", "1500"))
 
-
-def _content_text(value: Any) -> str:
-    if isinstance(value, str):
-        return value
-    if isinstance(value, list):
-        parts = []
-        for item in value:
-            if isinstance(item, dict):
-                parts.append(_content_text(item.get("text") or item.get("content") or ""))
-            else:
-                parts.append(_content_text(item))
-        return "\n".join(part for part in parts if part)
-    return "" if value is None else str(value)
+_ACTIONS = ("RETRIEVE", "DECOMPOSE", "ANSWER")
+_DIRECTIVE = {
+    "RETRIEVE": "Make at most ONE targeted tool call that maximally reduces uncertainty, then reassess.",
+    "DECOMPOSE": "Break the task into explicit sub-questions and tackle the single highest-value one next.",
+    "ANSWER": "Do NOT make further tool calls. Commit your best final answer now, concisely.",
+}
 
 
 class Breakpoints:
-    def __init__(self):
+    def __init__(self, model_client=None):
         self.store: dict[str, Any] = {}
+        self.model_client = model_client
 
     @staticmethod
     def feature_name():
         return "FEATURE_VOI"
 
     def before_task_call(self, payload):
-        self.store["tool_calls"] = 0
-        self.store["prompt_tokens"] = 0
-        self.store["completion_tokens"] = 0
-        self.store["last_tool_result_tokens"] = 0
+        self.store.setdefault("tool_calls", 0)
+        self.store.setdefault("tokens_used", 0)
         return payload
 
-    def before_chat_message(self, payload):
+    def _latest_state(self, msgs: list) -> str:
+        for m in reversed(msgs):
+            if isinstance(m, dict) and m.get("role") in ("tool", "function", "user", "assistant"):
+                c = m.get("content")
+                text = c if isinstance(c, str) else str(c)
+                if text.strip():
+                    return text[-STATE_CHARS:]
+        return ""
+
+    async def _score_actions(self, state: str, tools_left: int, tok_frac_left: float):
+        prompt = (
+            "You are a Value-of-Information (VOI) controller for a search agent under a strict dual budget.\n"
+            f"Remaining budget: {tools_left} tool calls and {int(tok_frac_left * 100)}% of the token budget.\n\n"
+            "Current state (most recent context):\n"
+            f"{state}\n\n"
+            "For each next action, estimate its Value-of-Information = expected marginal task progress "
+            "per unit of remaining budget, on a 0-10 scale:\n"
+            "- RETRIEVE: gather more evidence via a tool call\n"
+            "- DECOMPOSE: split the problem into sub-questions\n"
+            "- ANSWER: commit the final answer now\n"
+            "When little budget is left, ANSWER's relative VOI rises.\n"
+            "Return ONLY this line: RETRIEVE=<n> DECOMPOSE=<n> ANSWER=<n>"
+        )
+        txt = await helper_completion(prompt, 64, self.model_client)
+        scores: dict[str, float] = {}
+        for a in _ACTIONS:
+            m = re.search(a + r"\s*=\s*([0-9]+(?:\.[0-9]+)?)", txt)
+            if m:
+                scores[a] = float(m.group(1))
+        return scores or None
+
+    async def before_chat_message(self, payload):
         msgs = list(h.messages(payload))
-        last_tool_idx = None
-        for i in range(len(msgs) - 1, -1, -1):
-            if isinstance(msgs[i], dict) and msgs[i].get("role") in {"tool", "function"}:
-                last_tool_idx = i
-                break
-            if isinstance(msgs[i], dict) and msgs[i].get("role") != "system":
-                break
-        if last_tool_idx is None:
+        tools_used = self.store.get("tool_calls", 0)
+        tokens_used = self.store.get("tokens_used", 0)
+        tools_left = max(0, TOOL_BUDGET - tools_used)
+        tok_frac_left = max(0.0, 1.0 - (tokens_used / TOKEN_BUDGET if TOKEN_BUDGET > 0 else 1.0))
+
+        scores = await self._score_actions(self._latest_state(msgs), tools_left, tok_frac_left)
+        if not scores:
             return payload
-
-        tool_calls = self.store.get("tool_calls", 0)
-        tools_remaining = max(TOOL_BUDGET - tool_calls, 0)
-        context = (
-            self.store.get("prompt_tokens", 0)
-            + self.store.get("completion_tokens", 0)
-            + self.store.get("last_tool_result_tokens", 0)
-        )
-        context_remaining = max(CTX_LIMIT - context - OUTPUT_RESERVE, 0)
-        context_fraction = (context + OUTPUT_RESERVE) / CTX_LIMIT if CTX_LIMIT > 0 else 1.0
-
-        if tools_remaining > 5 and context_fraction < 0.75:
-            return payload
-
-        if tools_remaining <= 0 or context_fraction >= 0.97:
-            strategy = (
-                "ANSWER now. The tool/context budget is effectively exhausted; "
-                "do not call more tools; provide the best final answer from the evidence available."
-            )
-        elif tools_remaining <= 2 or context_fraction >= 0.9:
-            strategy = (
-                "FINALIZE unless one specific low-cost tool call is clearly likely "
-                "to change the final answer."
-            )
-        else:
-            strategy = (
-                "Use another tool only if it resolves a concrete uncertainty that is "
-                "likely to change the answer; keep the query narrow."
-            )
-
-        hint = (
-            "[VOI guidance after latest tool result: "
-            f"tools remaining {tools_remaining}; "
-            f"context remaining {context_remaining} tokens; "
-            f"{strategy}]"
-        )
+        action = max(scores, key=scores.get)
+        hint = f"[VOI controller — next action: {action} (scores {scores})] {_DIRECTIVE[action]}"
         print(f"[VOI] {hint}", flush=True)
 
-        payload = dict(payload)
-        tool_msg = dict(msgs[last_tool_idx])
-        tool_msg["content"] = f"{_content_text(tool_msg.get('content'))}\n{hint}".strip()
-        msgs[last_tool_idx] = tool_msg
-        payload["messages"] = msgs
+        target = None
+        for i in range(len(msgs) - 1, -1, -1):
+            role = msgs[i].get("role") if isinstance(msgs[i], dict) else None
+            if role in ("tool", "function"):
+                target = i
+                break
+            if role == "user" and target is None:
+                target = i
+        if target is not None:
+            msgs[target] = h.append_content(msgs[target], "\n" + hint)
+            payload = dict(payload)
+            payload["messages"] = msgs
         return payload
 
     def after_tool_call(self, payload):
-        total = 0
-        for msg in reversed(h.messages(payload)):
-            if not isinstance(msg, dict) or msg.get("role") not in {"tool", "function"}:
-                break
-            text = _content_text(msg.get("content"))
-            if text:
-                total += max(1, round(len(text) / 4))
-        self.store["last_tool_result_tokens"] = total
         return payload
 
     def after_chat_message(self, response):
         if response is not None:
             usage = response.get("usage") or {}
-            pt = usage.get("prompt_tokens")
-            if pt is None:
-                pt = usage.get("input_tokens")
-            if isinstance(pt, int):
-                self.store["prompt_tokens"] = pt
             ct = usage.get("completion_tokens")
             if ct is None:
                 ct = usage.get("output_tokens")
             if isinstance(ct, int):
-                self.store["completion_tokens"] = ct
+                self.store["tokens_used"] = self.store.get("tokens_used", 0) + ct
         return response, None
 
     def after_task_call(self, response):
@@ -126,7 +116,5 @@ class Breakpoints:
         return response, None
 
     def before_tool_call(self, response):
-        tool_call_count = len(h.tool_calls(response)) or 1
-        self.store["tool_calls"] = self.store.get("tool_calls", 0) + tool_call_count
-        self.store["last_tool_result_tokens"] = 0
+        self.store["tool_calls"] = self.store.get("tool_calls", 0) + 1
         return response
