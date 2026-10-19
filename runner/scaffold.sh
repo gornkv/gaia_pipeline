@@ -1,11 +1,9 @@
 #!/bin/sh
 set -aue
 
-pkill -f '[u]vicorn svc_scaffold.main:app' 2>/dev/null && sleep 2
-
-"${VENV_PYTHON}" -m uvicorn svc_scaffold.main:app --host "0.0.0.0" --port "${SCAFFOLD_PORT}" \
-  > "${REPO_ROOT}/_state/runner/scaffold.stdout" \
-  2> "${REPO_ROOT}/_state/runner/scaffold.stderr" & pid=$!
+"${VENV_PYTHON}" -m uvicorn svc_scaffold.main:app --ws none --host "0.0.0.0" --port "${SCAFFOLD_PORT}" \
+  > "${RUNNER_STATE_DIR}/scaffold.stdout" \
+  2> "${RUNNER_STATE_DIR}/scaffold.stderr" & pid=$!
 echo "${pid}" >> "${PID_FILE}"
 
 check_service() {

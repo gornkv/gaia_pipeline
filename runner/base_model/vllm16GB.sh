@@ -1,8 +1,6 @@
 #!/bin/sh
 set -aue
 
-pkill -f '[v]llm' 2>/dev/null && sleep 2
-
 "${VENV_PYTHON}" -m pip install "vllm>=0.22.1" ninja
 
 NVIDIA_LIB_PATHS="$("${VENV_PYTHON}" - <<'PY'
@@ -20,12 +18,14 @@ PY
 LD_LIBRARY_PATH="${NVIDIA_LIB_PATHS}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 PATH="${REPO_ROOT}/.venv/bin:${PATH}"
 VLLM_USE_TRITON_AWQ=1
+PREFIX_CACHE_FLAG=""
+[ "${VLLM_ENABLE_PREFIX_CACHING:-1}" = "1" ] && PREFIX_CACHE_FLAG="--enable-prefix-caching"
 
 "${REPO_ROOT}/.venv/bin/vllm" serve "QuantTrio/Qwen3.5-9B-AWQ" \
   --served-model-name "${BASE_MODEL_NAME}" \
   --api-key "${BASE_MODEL_API_KEY}" \
   --host "0.0.0.0" \
-  --port "18081" \
+  --port "${BASE_MODEL_PORT}" \
   --dtype float16 \
   --language-model-only \
   --max-model-len "8192" \
@@ -39,8 +39,9 @@ VLLM_USE_TRITON_AWQ=1
   --tool-call-parser qwen3_coder \
   --trust-remote-code \
   --enforce-eager \
-  > "${REPO_ROOT}/_state/runner/${BASE_MODEL_RUNNER_TYPE}.stdout" \
-  2> "${REPO_ROOT}/_state/runner/${BASE_MODEL_RUNNER_TYPE}.stderr" & pid=$!
+  ${PREFIX_CACHE_FLAG} \
+  > "${RUNNER_STATE_DIR}/${BASE_MODEL_RUNNER_TYPE}.stdout" \
+  2> "${RUNNER_STATE_DIR}/${BASE_MODEL_RUNNER_TYPE}.stderr" & pid=$!
 echo "${pid}" >> "${PID_FILE}"
 
 check_service() {
@@ -48,7 +49,7 @@ check_service() {
 import os
 from urllib.request import Request, urlopen
 
-request = Request("http://127.0.0.1:18081/v1/models")
+request = Request(f"http://127.0.0.1:{os.environ['BASE_MODEL_PORT']}/v1/models")
 api_key = os.environ.get("BASE_MODEL_API_KEY")
 if api_key:
     request.add_header("Authorization", f"Bearer {api_key}")

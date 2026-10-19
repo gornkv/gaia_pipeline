@@ -66,3 +66,13 @@ Install Python 3 and the required system tools in the host environment, then run
 ```bash
 sh runner/start.sh
 ```
+
+Run one feature on a dedicated single-GPU lane with:
+
+```bash
+sh runner/start.sh FEATURE_VOI a optional-tag
+sh runner/start.sh baseline b
+```
+
+Lanes `a`, `b`, `c`, and `d` use GPUs `3`, `2`, `0`, and `1` respectively,
+with isolated model/scaffold ports, browser sockets, process state, and eval logs.

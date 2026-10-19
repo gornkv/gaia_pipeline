@@ -1,8 +1,6 @@
 #!/bin/sh
 set -aue
 
-pkill -f '[v]llm' 2>/dev/null && sleep 2
-
 # Detect GPU compute capability; default to 7.5 (prebuilt-safe) if unavailable.
 GPU_COMPUTE_CAP="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -1 | tr -d ' \r')"
 GPU_COMPUTE_CAP="${GPU_COMPUTE_CAP:-7.5}"
@@ -77,7 +75,7 @@ chmod +x "${LLAMA_SERVER}"
   -hf "unsloth/Qwen3.5-9B-GGUF:Q4_K_M" \
   --alias "${BASE_MODEL_NAME}" \
   --host "0.0.0.0" \
-  --port "18082" \
+  --port "${BASE_MODEL_PORT}" \
   --api-key "${BASE_MODEL_API_KEY}" \
   --ctx-size "262144" \
   --n-gpu-layers "999" \
@@ -87,8 +85,8 @@ chmod +x "${LLAMA_SERVER}"
   --ubatch-size "128" \
   --jinja \
   -fit off \
-  > "${REPO_ROOT}/_state/runner/${BASE_MODEL_RUNNER_TYPE}.stdout" \
-  2> "${REPO_ROOT}/_state/runner/${BASE_MODEL_RUNNER_TYPE}.stderr" & pid=$!
+  > "${RUNNER_STATE_DIR}/${BASE_MODEL_RUNNER_TYPE}.stdout" \
+  2> "${RUNNER_STATE_DIR}/${BASE_MODEL_RUNNER_TYPE}.stderr" & pid=$!
 echo "${pid}" >> "${PID_FILE}"
 
 check_service() {
@@ -96,7 +94,7 @@ check_service() {
 import os
 from urllib.request import Request, urlopen
 
-request = Request("http://127.0.0.1:18082/v1/models")
+request = Request(f"http://127.0.0.1:{os.environ['BASE_MODEL_PORT']}/v1/models")
 api_key = os.environ.get("BASE_MODEL_API_KEY")
 if api_key:
     request.add_header("Authorization", f"Bearer {api_key}")
