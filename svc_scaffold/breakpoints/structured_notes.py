@@ -8,7 +8,7 @@ import json
 import uuid
 from typing import Any
 
-import svc_scaffold.openai_helpers as h
+from svc_scaffold.breakpoints import common as h
 
 NOTE_TOOLS = [
     {
@@ -70,7 +70,7 @@ class Breakpoints:
 
     @staticmethod
     def feature_name():
-        return "FEATURE_STRUCTURED_NOTES"
+        return "structured_notes"
 
     @staticmethod
     def _tool_name(tool: Any) -> str:

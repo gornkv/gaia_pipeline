@@ -4,8 +4,8 @@ import os
 from collections import Counter
 from typing import Any
 
-import svc_scaffold.openai_helpers as h
-from svc_scaffold.branch_context import BranchContextManager
+from svc_scaffold.breakpoints import common as h
+from svc_scaffold.breakpoints.common import BranchContextManager
 
 BRANCHES = int(os.getenv("SHORT_MAK_BRANCHES", "3"))
 print(f"[SHORT_MAK] module loaded, BRANCHES={BRANCHES}", flush=True)
@@ -28,7 +28,7 @@ class Breakpoints:
 
     @staticmethod
     def feature_name():
-        return "FEATURE_SHORT_MAK"
+        return "short_mak"
 
     def before_task_call(self, payload):
         if self.store.get("responses") is None:

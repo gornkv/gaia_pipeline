@@ -5,7 +5,7 @@ from __future__ import annotations
 import os, re
 from typing import Any
 import requests
-import svc_scaffold.openai_helpers as h
+from svc_scaffold.breakpoints import common as h
 
 
 BRANCHES = int(os.getenv("LLM_JUDGE_BRANCHES", "3"))
@@ -21,7 +21,7 @@ class Breakpoints:
 
     @staticmethod
     def feature_name():
-        return "FEATURE_LLM_JUDGE"
+        return "llm_judge"
 
     def before_task_call(self, payload):
         if self.store.get("responses") is None:

@@ -10,7 +10,7 @@ import json
 import re
 from typing import Any
 
-import svc_scaffold.openai_helpers as h
+from svc_scaffold.breakpoints import common as h
 
 SUBGOAL_PROMPT = (
     "Before taking any action, clearly state your current subgoal in one sentence. "
@@ -34,7 +34,7 @@ class Breakpoints:
 
     @staticmethod
     def feature_name():
-        return "FEATURE_HIAGENT"
+        return "hiagent"
 
     def _ensure_subgoal_prompt(self, payload):
         msgs = list(h.messages(payload))

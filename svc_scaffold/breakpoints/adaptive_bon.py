@@ -9,8 +9,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
-import svc_scaffold.openai_helpers as h
-from svc_scaffold.branch_context import BranchContextManager
+from svc_scaffold.breakpoints import common as h
+from svc_scaffold.breakpoints.common import BranchContextManager
 
 MAX_K = int(os.getenv("ADAPTIVE_BON_MAX_K", "4"))
 COMPLEXITY_THRESHOLD = int(os.getenv("ADAPTIVE_BON_COMPLEXITY_THRESHOLD", "400"))
@@ -27,7 +27,7 @@ class Breakpoints:
 
     @staticmethod
     def feature_name():
-        return "FEATURE_ADAPTIVE_BON"
+        return "adaptive_bon"
 
     def before_task_call(self, payload):
         if self.store.get("phase") is None:

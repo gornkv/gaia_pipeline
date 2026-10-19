@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-import svc_scaffold.openai_helpers as h
+from svc_scaffold.breakpoints import common as h
 
 BEAM_WIDTH = int(os.getenv("BAVT_BEAM_WIDTH", "2"))
 TOOL_BUDGET = int(os.getenv("BAVT_TOOL_BUDGET", "15"))
@@ -33,7 +33,7 @@ class Breakpoints:
 
     @staticmethod
     def feature_name():
-        return "FEATURE_BAVT"
+        return "bavt"
 
     def before_task_call(self, payload):
         self.store.setdefault("tool_calls_done", 0)

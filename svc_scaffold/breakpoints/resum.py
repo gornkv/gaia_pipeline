@@ -9,9 +9,9 @@ import json
 import os
 from typing import Any
 
-import svc_scaffold.openai_helpers as h
+from svc_scaffold.breakpoints import common as h
 
-CONTEXT_LIMIT = int(os.getenv("RESUM_CONTEXT_LIMIT", "30000"))
+CONTEXT_LIMIT = int(os.environ["MODEL_CONTEXT_LIMIT"])
 SUMMARY_CHUNK_CHARS = max(1000, int(os.getenv("RESUM_SUMMARY_CHUNK_CHARS", "60000")))
 SUMMARY_MAX_TOKENS = 1024
 SUMMARY_MESSAGE_NAME = "resum_summary"
@@ -86,7 +86,7 @@ class Breakpoints:
 
     @staticmethod
     def feature_name():
-        return "FEATURE_RESUM"
+        return "resum"
 
     async def _summarize_text(self, text: str, part: int, total: int, merging: bool = False) -> str:
         source = "partial summaries" if merging else "conversation history"

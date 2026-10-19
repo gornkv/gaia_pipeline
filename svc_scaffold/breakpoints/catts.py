@@ -12,7 +12,7 @@ import re
 from collections import Counter
 from typing import Any
 
-import svc_scaffold.openai_helpers as h
+from svc_scaffold.breakpoints import common as h
 
 N_SAMPLES = int(os.getenv("CATTS_N_SAMPLES", "3"))
 ENTROPY_THRESHOLD = float(os.getenv("CATTS_ENTROPY_THRESHOLD", "0.5"))
@@ -41,7 +41,7 @@ class Breakpoints:
 
     @staticmethod
     def feature_name():
-        return "FEATURE_CATTS"
+        return "catts"
 
     def before_task_call(self, payload):
         return payload

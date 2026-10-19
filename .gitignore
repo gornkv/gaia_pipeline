@@ -4,4 +4,7 @@ _state/
 .venv
 playwright-browsers/
 __pycache__/
+*.csv.lock
+*.csv.bak
 /tests/
+/plans/default.csv

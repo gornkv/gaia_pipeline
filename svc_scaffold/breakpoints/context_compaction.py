@@ -7,12 +7,12 @@ import json
 import os
 from typing import Any
 
-import svc_scaffold.openai_helpers as h
+from svc_scaffold.breakpoints import common as h
 
 COMPACTION_RATIO = float(os.getenv("CONTEXT_COMPACTION_RATIO", "0.7"))
-MAX_CONTEXT = int(os.getenv("CONTEXT_COMPACTION_MAX_TOKENS", "260000"))
+MAX_CONTEXT = int(os.environ["MODEL_CONTEXT_LIMIT"])
 TAIL_GROUPS = max(1, int(os.getenv("CONTEXT_COMPACTION_TAIL_GROUPS", "3")))
-TAIL_TOKEN_LIMIT = 65000
+TAIL_TOKEN_LIMIT = MAX_CONTEXT // 4
 SUMMARY_TEXT_CHARS = 60000
 SUMMARY_MAX_TOKENS = 512
 DEFAULT_OUTPUT_RESERVE = 4096
@@ -93,7 +93,7 @@ class Breakpoints:
 
     @staticmethod
     def feature_name():
-        return "FEATURE_CONTEXT_COMPACTION"
+        return "context_compaction"
 
     async def _summarize(self, memory: str, history: str) -> str:
         prompt = (

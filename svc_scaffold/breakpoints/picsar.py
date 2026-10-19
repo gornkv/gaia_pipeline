@@ -12,8 +12,8 @@ import math, os, re
 from typing import Any
 
 import requests
-import svc_scaffold.openai_helpers as h
-from svc_scaffold.branch_context import BranchContextManager
+from svc_scaffold.breakpoints import common as h
+from svc_scaffold.breakpoints.common import BranchContextManager
 
 BRANCHES = int(os.getenv("PICSAR_BRANCHES", "6"))
 USE_NORMALIZED = os.getenv("PICSAR_NORMALIZED", "0") == "1"
@@ -92,7 +92,7 @@ class Breakpoints:
 
     @staticmethod
     def feature_name():
-        return "FEATURE_PICSAR"
+        return "picsar"
 
     def before_task_call(self, payload):
         if self.store.get("responses") is None:

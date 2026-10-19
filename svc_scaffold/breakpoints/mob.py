@@ -9,8 +9,8 @@ from collections import Counter
 from typing import Any
 
 import requests
-import svc_scaffold.openai_helpers as h
-from svc_scaffold.branch_context import BranchContextManager
+from svc_scaffold.breakpoints import common as h
+from svc_scaffold.breakpoints.common import BranchContextManager
 
 BRANCHES = int(os.getenv("MOB_BRANCHES", "8"))
 BOOTSTRAP = int(os.getenv("MOB_BOOTSTRAP_SAMPLES", "1000"))
@@ -65,7 +65,7 @@ class Breakpoints:
 
     @staticmethod
     def feature_name():
-        return "FEATURE_MOB"
+        return "mob"
 
     def before_task_call(self, payload):
         if self.store.get("responses") is None:

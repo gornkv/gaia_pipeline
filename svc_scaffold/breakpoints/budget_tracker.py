@@ -3,10 +3,10 @@ from __future__ import annotations
 import os
 from typing import Any
 
-import svc_scaffold.openai_helpers as h
+from svc_scaffold.breakpoints import common as h
 
 TOOL_LIMIT = int(os.getenv("BUDGET_TRACKER_TOOL_LIMIT", "30"))
-CTX_LIMIT = int(os.getenv("BASE_MODEL_CTX_LIMIT", "262144"))
+CTX_LIMIT = int(os.environ["MODEL_CONTEXT_LIMIT"])
 OUTPUT_RESERVE = 4096
 
 
@@ -30,7 +30,7 @@ class Breakpoints:
 
     @staticmethod
     def feature_name():
-        return "FEATURE_BUDGET_TRACKER"
+        return "budget_tracker"
 
     def before_task_call(self, payload):
         self.store["tool_calls"] = 0

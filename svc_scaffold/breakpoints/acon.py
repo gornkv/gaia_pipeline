@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-import svc_scaffold.openai_helpers as h
+from svc_scaffold.breakpoints import common as h
 
 TOKEN_BUDGET = int(os.getenv("ACON_TOKEN_BUDGET", "30000"))
 
@@ -33,7 +33,7 @@ class Breakpoints:
 
     @staticmethod
     def feature_name():
-        return "FEATURE_ACON"
+        return "acon"
 
     def before_task_call(self, payload):
         self.store["tokens_used"] = 0

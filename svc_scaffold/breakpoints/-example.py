@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-import svc_scaffold.openai_helpers as h
+from svc_scaffold.breakpoints import common as h
 
 toolcalls_count = 0
 BRANCHES = 3
@@ -14,7 +14,7 @@ class Breakpoints:
 
     @staticmethod
     def feature_name():
-        return "FEATURE_EXAMPLE"
+        return "example"
 
     def after_tool_call(self, payload):
         return payload
