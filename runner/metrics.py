@@ -1,5 +1,6 @@
 """Преобразует один sample из Inspect EvalLog в компактные поля CSV."""
 
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,11 @@ def _seconds(start: Any, end: Any) -> float:
     return max(0.0, (end - start).total_seconds())
 
 
+def _tool_stats(tools: list[dict[str, Any]], time_limit: float) -> tuple[float, int]:
+    durations = [_seconds(event.get("timestamp"), event.get("completed")) for event in tools]
+    return sum(durations), sum(duration > time_limit for duration in durations)
+
+
 def read_metrics(path: Path) -> dict[str, str]:
     """Извлекает результат, токены и стоимость tools из закрытого eval-лога."""
     from inspect_ai.log import read_eval_log
@@ -30,7 +36,8 @@ def read_metrics(path: Path) -> dict[str, str]:
     events = [_dump(event) for event in (sample.events or [])]
     tools = [event for event in events if event.get("event") == "tool"]
     # Это сумма времени tools, поэтому при параллельности она может превысить wall time задачи.
-    tool_time = sum(_seconds(event.get("timestamp"), event.get("completed")) for event in tools)
+    tool_time_limit = float(os.getenv("GAIA_TOOL_TIMEOUT", "180"))
+    tool_time, tool_timeouts = _tool_stats(tools, tool_time_limit)
     usage = sum(getattr(item, "total_tokens", 0) or 0 for item in (sample.model_usage or {}).values())
     scores = [_dump(score).get("value") for score in (sample.scores or {}).values()]
     timed_out = any(
@@ -42,6 +49,8 @@ def read_metrics(path: Path) -> dict[str, str]:
             score == "C" or score is True or isinstance(score, (int, float)) and score > 0 for score in scores
         ) else "unsolved",
         "tool_calls": str(len(tools)),
+        # Один ToolEvent — один вызов; тип ошибки не создаёт дополнительного инкремента.
+        "tool_timeouts": str(tool_timeouts),
         "tool_time_s": f"{tool_time:.3f}",
         "tokens_used": str(usage),
         # Подробности уже находятся в .eval и inspect.stderr; CSV хранит только признак ошибки.

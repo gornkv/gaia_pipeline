@@ -32,7 +32,7 @@ from runner.metrics import read_metrics
 FIELDS = [
     "job_id", "model", "backend", "task", "split", "sample_no", "feature",
     "token_limit", "tokens_used", "status", "worker_id", "started_at", "heartbeat_at",
-    "result", "tool_calls",
+    "result", "tool_calls", "tool_timeouts",
     "task_time_s", "tool_time_s", "eval_log", "error",
 ]
 
@@ -253,7 +253,7 @@ def run_job(
             "--message-limit", os.environ.get("GAIA_MESSAGE_LIMIT", "100"),
             "-T", f"split={row['split'] or 'validation'}",
             "-T", f"max_attempts={os.environ.get('GAIA_MAX_ATTEMPTS', '1')}",
-            "-T", f"code_timeout={os.environ.get('GAIA_TOOL_TIMEOUT', '120')}",
+            "-T", f"code_timeout={os.environ.get('GAIA_TOOL_TIMEOUT', '180')}",
             "--no-fail-on-error",
         ]
         # Пишем вывод в файлы задачи, чтобы параллельные запуски Inspect не перемешались в терминале.

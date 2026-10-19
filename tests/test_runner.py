@@ -8,10 +8,19 @@ from pathlib import Path
 from unittest.mock import patch
 
 from runner.backends import llama_docker, vllm
+from runner.metrics import _tool_stats
 from runner.start import FIELDS, Plan, job_environment, sandbox_for_backend
 
 
 class RunnerTest(unittest.TestCase):
+    def test_tool_timeouts_come_from_event_duration_only(self):
+        tools = [
+            {"timestamp": "2026-01-01T00:00:00+00:00", "completed": "2026-01-01T00:03:01+00:00",
+             "error": {"type": "timeout"}},
+            {"timestamp": "2026-01-01T00:00:00+00:00", "completed": "2026-01-01T00:03:00+00:00"},
+        ]
+        self.assertEqual(_tool_stats(tools, 180), (361, 1))
+
     def test_claim_and_finish_preserve_other_rows(self):
         # Результат сливается со свежим CSV и не должен затирать посторонние ручные правки.
         with tempfile.TemporaryDirectory() as directory:
