@@ -405,18 +405,15 @@ def main() -> int:
         stdout=backend_log, stderr=subprocess.STDOUT,
     ) if command else None
     try:
-        # Fail-fast: backend обязан стартовать с запрошенным PARALLEL, автоматического снижения нет.
-        wait_http(process, f"{model_base_url}/models", model_api_key)
-        next_external_check = time.monotonic() + 10
+        # Локальный backend нужно дождаться; внешний обнаруживается только реальными запросами модели.
+        if process is not None:
+            wait_http(process, f"{model_base_url}/models", model_api_key)
         with ThreadPoolExecutor(max_workers=parallel) as pool:
             # Этот цикл и есть диспетчер: он забирает строку при освобождении слота.
             futures = set()
             while True:
                 if process is not None and process.poll() is not None:
                     raise RuntimeError(f"model backend exited with code {process.returncode}")
-                if process is None and time.monotonic() >= next_external_check:
-                    _http_request(f"{model_base_url}/models", model_api_key)
-                    next_external_check = time.monotonic() + 10
                 futures = {future for future in futures if not future.done()}
                 while len(futures) < parallel:
                     row = plan.claim(model, backend_name, worker_id)
