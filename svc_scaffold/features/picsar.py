@@ -12,8 +12,8 @@ import math, os, re
 from typing import Any
 
 import requests
-from svc_scaffold.breakpoints import common as h
-from svc_scaffold.breakpoints.common import BranchContextManager
+from svc_scaffold.features import common as h
+from svc_scaffold.features.common import BranchContextManager
 
 BRANCHES = int(os.getenv("PICSAR_BRANCHES", "6"))
 USE_NORMALIZED = os.getenv("PICSAR_NORMALIZED", "0") == "1"

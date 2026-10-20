@@ -5,7 +5,7 @@ from __future__ import annotations
 import os, re
 from typing import Any
 import requests
-from svc_scaffold.breakpoints import common as h
+from svc_scaffold.features import common as h
 
 
 BRANCHES = int(os.getenv("LLM_JUDGE_BRANCHES", "3"))

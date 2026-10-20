@@ -12,7 +12,7 @@ import re
 from collections import Counter
 from typing import Any
 
-from svc_scaffold.breakpoints import common as h
+from svc_scaffold.features import common as h
 
 N_SAMPLES = int(os.getenv("CATTS_N_SAMPLES", "3"))
 ENTROPY_THRESHOLD = float(os.getenv("CATTS_ENTROPY_THRESHOLD", "0.5"))

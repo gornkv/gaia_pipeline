@@ -10,7 +10,7 @@ import json
 import re
 from typing import Any
 
-from svc_scaffold.breakpoints import common as h
+from svc_scaffold.features import common as h
 
 SUBGOAL_PROMPT = (
     "Before taking any action, clearly state your current subgoal in one sentence. "

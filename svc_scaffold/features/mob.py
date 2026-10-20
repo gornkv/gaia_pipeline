@@ -9,8 +9,8 @@ from collections import Counter
 from typing import Any
 
 import requests
-from svc_scaffold.breakpoints import common as h
-from svc_scaffold.breakpoints.common import BranchContextManager
+from svc_scaffold.features import common as h
+from svc_scaffold.features.common import BranchContextManager
 
 BRANCHES = int(os.getenv("MOB_BRANCHES", "8"))
 BOOTSTRAP = int(os.getenv("MOB_BOOTSTRAP_SAMPLES", "1000"))

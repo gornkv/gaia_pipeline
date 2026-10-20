@@ -3,6 +3,10 @@
 import os
 
 
+def sandbox() -> str:
+    return "local"
+
+
 def command(model: str, port: int, parallel: int) -> list[str]:
     # max-num-seqs фиксирует требуемую ёмкость: worker не уменьшает PARALLEL молча.
     return [

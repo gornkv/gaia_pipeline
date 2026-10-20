@@ -9,8 +9,8 @@ import os
 from collections import Counter
 from typing import Any
 
-from svc_scaffold.breakpoints import common as h
-from svc_scaffold.breakpoints.common import BranchContextManager
+from svc_scaffold.features import common as h
+from svc_scaffold.features.common import BranchContextManager
 
 BRANCHES = int(os.getenv("RANKED_VOTING_BRANCHES", "5"))
 MODE = os.getenv("RANKED_VOTING_MODE", "bcv")

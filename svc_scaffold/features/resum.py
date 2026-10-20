@@ -9,7 +9,7 @@ import json
 import os
 from typing import Any
 
-from svc_scaffold.breakpoints import common as h
+from svc_scaffold.features import common as h
 
 CONTEXT_LIMIT = int(os.environ["MODEL_CONTEXT_LIMIT"])
 SUMMARY_CHUNK_CHARS = max(1000, int(os.getenv("RESUM_SUMMARY_CHUNK_CHARS", "60000")))

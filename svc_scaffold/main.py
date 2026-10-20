@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import time
 import uuid
@@ -28,6 +29,11 @@ class ModelClient:
         self.base_url = os.environ["BASE_MODEL_API_BASE_URL"].rstrip("/")
         self.api_key = os.environ["BASE_MODEL_API_KEY"]
         self.model = os.environ["BASE_MODEL_NAME"]
+        self.context_limit = int(os.environ["MODEL_CONTEXT_LIMIT"])
+        self.average_tokens_per_second = float(os.getenv("MODEL_AVERAGE_TOKENS_PER_SECOND", "20"))
+        if self.context_limit < 1 or self.average_tokens_per_second <= 0:
+            raise ValueError("model context and average token speed must be positive")
+        self.request_timeout = math.ceil(self.context_limit / self.average_tokens_per_second)
 
     @property
     def headers(self) -> dict[str, str]:
@@ -40,7 +46,13 @@ class ModelClient:
 
     async def chat_completions(self, payload: dict[str, Any]) -> dict[str, Any]:
         payload = dict(payload, model=self.model, stream=False)
-        timeout = float(os.getenv("BASE_MODEL_REQUEST_TIMEOUT", "1800"))
+        requested_max = payload.get("max_tokens")
+        payload["max_tokens"] = (
+            min(requested_max, self.context_limit)
+            if isinstance(requested_max, int)
+            else self.context_limit
+        )
+        timeout = self.request_timeout
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(
@@ -65,7 +77,7 @@ class ModelClient:
 model = os.environ["SCAFFOLD_MODEL_NAME"]
 model_client = ModelClient()
 scaffold = Scaffold(model_client)
-app = FastAPI(title="GAIA Scaffold OpenAI-compatible Proxy")
+app = FastAPI(title="Benchmark Scaffold OpenAI-compatible Proxy")
 
 
 @app.get("/health")
@@ -100,5 +112,5 @@ async def chat_completions(request: Request) -> JSONResponse:
     response = dict(response)
     response.update(id=f"scaffold-{uuid.uuid4().hex}", model=model)
     response["scaffold"] = dict(response.get("scaffold") or {})
-    response["scaffold"].update(algorithm="breakpoints", model_client=model_client.name)
+    response["scaffold"].update(algorithm="features", model_client=model_client.name)
     return JSONResponse(response)

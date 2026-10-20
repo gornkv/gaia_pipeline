@@ -9,8 +9,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from svc_scaffold.breakpoints import common as h
-from svc_scaffold.breakpoints.common import BranchContextManager
+from svc_scaffold.features import common as h
+from svc_scaffold.features.common import BranchContextManager
 
 MAX_K = int(os.getenv("ADAPTIVE_BON_MAX_K", "4"))
 COMPLEXITY_THRESHOLD = int(os.getenv("ADAPTIVE_BON_COMPLEXITY_THRESHOLD", "400"))

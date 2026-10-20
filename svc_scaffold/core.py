@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import importlib
-import hashlib
 import inspect
 import os
-import pkgutil
 from typing import Any, Protocol
 
-import svc_scaffold.breakpoints as breakpoint_modules
-from svc_scaffold.breakpoints import common as h
+from svc_scaffold.features import common as h
 
 
 class ModelClient(Protocol):
@@ -16,42 +13,34 @@ class ModelClient(Protocol):
         ...
 
 
-enabled_breakpoints_handlers: dict[str, list[Any]] = {}
-
-
-def enabled_breakpoints(key: str, model_client: ModelClient | None = None) -> list[Any]:
-    if key not in enabled_breakpoints_handlers:
-        enabled_breakpoints_handlers[key] = []
-        # Сначала находим реализации, затем создаём их строго в порядке CSV/FEATURES.
-        breakpoint_classes = {}
-        for module_info in pkgutil.iter_modules(breakpoint_modules.__path__, breakpoint_modules.__name__ + "."):
-            breakpoint_class = getattr(importlib.import_module(module_info.name), "Breakpoints", None)
-            if breakpoint_class is None:
-                continue
-            breakpoint_classes[breakpoint_class.feature_name()] = breakpoint_class
-        for feature in filter(None, os.getenv("FEATURES", "").split(",")):
-            if feature not in breakpoint_classes:
-                raise ValueError(f"Unknown feature: {feature}")
-            breakpoint_class = breakpoint_classes[feature]
-            try:
-                enabled_breakpoints_handlers[key].append(breakpoint_class(model_client))
-            except TypeError:
-                enabled_breakpoints_handlers[key].append(breakpoint_class())
-
-    return enabled_breakpoints_handlers[key]
-
-
-def task_key(payload: dict[str, Any]) -> str:
-    for item in h.messages(payload):
-        if isinstance(item, dict) and item.get("role") == "user":
-            return hashlib.md5(str(item.get("content") or "").encode()).hexdigest()
-    return "default"
+def enabled_features(model_client: ModelClient | None = None) -> list[Any]:
+    handlers = []
+    for feature in filter(None, os.getenv("FEATURES", "").split(",")):
+        module_name = f"svc_scaffold.features.{feature}"
+        try:
+            module = importlib.import_module(module_name)
+        except ModuleNotFoundError as error:
+            if error.name != module_name:
+                raise
+            raise ValueError(f"Unknown feature: {feature}") from error
+        try:
+            feature_class = module.Breakpoints
+        except AttributeError as error:
+            raise ValueError(f"Feature module {feature} has no Breakpoints class") from error
+        if feature_class.feature_name() != feature:
+            raise ValueError(f"Feature module {feature} declares name {feature_class.feature_name()}")
+        try:
+            handlers.append(feature_class(model_client))
+        except TypeError:
+            handlers.append(feature_class())
+    return handlers
 
 
 class Scaffold:
     def __init__(self, model_client: ModelClient) -> None:
         self.model_client = model_client
-        self.enabled_breakpoints = enabled_breakpoints
+        # Runner создаёт отдельный scaffold-процесс на job, поэтому фичи живут до завершения процесса.
+        self.features = enabled_features(model_client)
 
     async def _maybe_await(self, result):
         if inspect.isawaitable(result):
@@ -59,9 +48,8 @@ class Scaffold:
         return result
 
     async def chat_completions(self, payload: dict[str, Any]) -> dict[str, Any]:
-        key = task_key(payload)
         task_start = h.is_task_start(payload)
-        handlers = self.enabled_breakpoints(key, self.model_client)
+        handlers = self.features
 
         if h.has_tool_result(payload):
             for middleware in handlers:
@@ -115,8 +103,5 @@ class Scaffold:
                     response = result
             if new_payload is not None:
                 response = await self.chat_completions(new_payload)
-
-        if new_payload is None and h.is_visible_task_response(response):
-            enabled_breakpoints_handlers.pop(key, None)
 
         return response

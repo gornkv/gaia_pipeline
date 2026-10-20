@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from svc_scaffold.breakpoints import common as h
+from svc_scaffold.features import common as h
 
 TOKEN_BUDGET = int(os.getenv("ACON_TOKEN_BUDGET", "30000"))
 

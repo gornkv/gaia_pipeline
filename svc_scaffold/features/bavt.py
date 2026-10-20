@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from svc_scaffold.breakpoints import common as h
+from svc_scaffold.features import common as h
 
 BEAM_WIDTH = int(os.getenv("BAVT_BEAM_WIDTH", "2"))
 TOOL_BUDGET = int(os.getenv("BAVT_TOOL_BUDGET", "15"))

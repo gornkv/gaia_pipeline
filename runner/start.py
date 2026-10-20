@@ -13,7 +13,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import uuid
 from concurrent.futures import ThreadPoolExecutor, wait
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -31,15 +30,31 @@ from runner.metrics import read_metrics
 
 FIELDS = [
     "job_id", "model", "backend", "task", "split", "sample_no", "feature",
-    "token_limit", "tokens_used", "status", "worker_id", "started_at", "heartbeat_at",
+    "feature_envs", "token_limit", "tokens_used", "status", "worker_id", "started_at", "heartbeat_at",
     "result", "tool_calls", "tool_timeouts",
     "task_time_s", "tool_time_s", "eval_log", "error",
 ]
 
 
 def sandbox_for_backend(backend: str) -> str:
-    """Оставляет Docker-backend в контейнере, а инструменты нативного backend — локально."""
-    return "docker" if backend.endswith("docker") else "local"
+    """Возвращает явно объявленный backend-модулем тип sandbox."""
+    module = importlib.import_module(f"runner.backends.{backend}")
+    return module.sandbox()
+
+
+def feature_environment(value: str) -> dict[str, str]:
+    """Разбирает CSV-строку вида NAME=value,OTHER=value для одной job."""
+    result: dict[str, str] = {}
+    for item in filter(None, (part.strip() for part in value.split(","))):
+        name, separator, setting = item.partition("=")
+        if not separator or re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) is None:
+            raise ValueError(f"invalid feature_envs item: {item}")
+        if name == "FEATURES":
+            raise ValueError("feature_envs cannot override FEATURES")
+        if name in result:
+            raise ValueError(f"duplicate feature_envs variable: {name}")
+        result[name] = setting
+    return result
 
 
 class Plan:
@@ -167,7 +182,8 @@ def stop(process: subprocess.Popen | None) -> None:
 
 
 def job_environment(
-    row: dict[str, str], slot: int, model_port: int, scaffold_port_base: int, state: Path
+    row: dict[str, str], slot: int, model_port: int, scaffold_port_base: int,
+    state: Path, runtime: Path,
 ) -> dict[str, str]:
     env = os.environ.copy()
     features = [] if not row["feature"] or row["feature"] == "baseline" else [
@@ -180,34 +196,39 @@ def job_environment(
         raise ValueError(f"duplicate feature: {row['feature']}")
     # Одна переменная сохраняет точный порядок middleware из строки CSV.
     env["FEATURES"] = ",".join(features)
+    env.update(feature_environment(row["feature_envs"]))
     # У каждого параллельного слота свой scaffold и порт; backend модели остаётся общим.
     scaffold_port = scaffold_port_base + slot
     env.update({
         "PYTHONPATH": str(ROOT),
-        "XDG_RUNTIME_DIR": str(state / "runtime"),
+        "XDG_RUNTIME_DIR": str(runtime),
         "INSPECT_LOG_DIR": str(state / "inspect-logs"),
         "BASE_MODEL_API_BASE_URL": f"http://127.0.0.1:{model_port}/v1",
         "BASE_MODEL_API_KEY": os.environ.get("BASE_MODEL_API_KEY", "local"),
         "BASE_MODEL_NAME": row["model"],
         "SCAFFOLD_PORT": str(scaffold_port),
         "SCAFFOLD_API_KEY": "local",
-        "SCAFFOLD_MODEL_NAME": f"gaia-job-{row['job_id']}",
-        "GAIA_MODEL_BASE_URL": f"http://127.0.0.1:{scaffold_port}/v1",
-        "GAIA_MODEL_API_KEY": "local",
-        "GAIA_MODEL_NAME": f"gaia-job-{row['job_id']}",
+        "SCAFFOLD_MODEL_NAME": f"benchmark-job-{row['job_id']}",
+        "BENCHMARK_MODEL_BASE_URL": f"http://127.0.0.1:{scaffold_port}/v1",
+        "BENCHMARK_MODEL_API_KEY": "local",
     })
     return env
 
 
 def run_job(
-    plan: Plan, row: dict[str, str], worker_id: str, slot: int, model_port: int,
-    scaffold_port_base: int, heartbeat_interval: int,
+    plan: Plan, row: dict[str, str], worker_id: str, worker_logs: Path, slot: int,
+    model_port: int, scaffold_port_base: int, heartbeat_interval: int, benchmark_runner: Path,
 ) -> None:
-    # Каталог job_id изолирует браузерный runtime, сокет tool-support и логи конкретной задачи.
-    state = ROOT / "_state" / "jobs" / row["job_id"]
-    (state / "runtime").mkdir(parents=True, exist_ok=True)
+    # Runtime короткий из-за лимита AF_UNIX; диагностические файлы сразу пишутся в постоянные logs.
+    run_id = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
+    base = worker_logs / "jobs" / f"{row['job_id']}-{run_id}"
+    state = base
+    suffix = 2
+    while state.exists():
+        state = base.with_name(f"{base.name}-{suffix}")
+        suffix += 1
     (state / "inspect-logs").mkdir(parents=True, exist_ok=True)
-    env = job_environment(row, slot, model_port, scaffold_port_base, state)
+    runtime = Path(tempfile.mkdtemp(prefix=f"benchmark-{row['job_id']}-"))
     processes: list[subprocess.Popen] = []
     heartbeat_stop = Event()
     heartbeat = Thread(
@@ -217,11 +238,12 @@ def run_job(
     heartbeat.start()
     started = time.monotonic()
     try:
+        env = job_environment(row, slot, model_port, scaffold_port_base, state, runtime)
         # Tool-support хранит состояние браузера и сокета, поэтому каждой задаче нужен свой экземпляр.
         tool_log = (state / "tool-support.log").open("w")
         tool = subprocess.Popen([str(ROOT / ".venv/bin/inspect-tool-support"), "server"], env=env, stdout=tool_log, stderr=subprocess.STDOUT)
         processes.append(tool)
-        socket = state / "runtime" / "inspect-tool-support.sock"
+        socket = runtime / "inspect-tool-support.sock"
         for _ in range(60):
             if socket.exists():
                 break
@@ -240,21 +262,15 @@ def run_job(
         processes.append(scaffold)
         wait_http(scaffold, f"http://127.0.0.1:{env['SCAFFOLD_PORT']}/health", 60)
 
-        task = row["task"]
-        if not task.startswith("gaia"):
-            raise ValueError("this first worker version supports GAIA tasks only")
         cmd = [
-            str(ROOT / ".venv/bin/inspect"), "eval", f"runner/custom_gaia.py@{task}",
-            "--model", f"openai-api/gaia_model/{env['SCAFFOLD_MODEL_NAME']}",
-            # Browser/sandbox следует backend: Docker остаётся в контейнере, нативный vLLM — локально.
+            str(ROOT / ".venv/bin/python"), str(benchmark_runner),
+            "--task", row["task"],
+            "--split", row["split"] or "validation",
+            "--sample-no", row["sample_no"],
+            "--model", env["SCAFFOLD_MODEL_NAME"],
             "--sandbox", sandbox_for_backend(row["backend"]),
-            "--max-connections", "1", "--limit", f"{row['sample_no']}-{row['sample_no']}",
-            "--time-limit", os.environ.get("GAIA_SAMPLE_TIME_LIMIT", "1800"),
-            "--message-limit", os.environ.get("GAIA_MESSAGE_LIMIT", "100"),
-            "-T", f"split={row['split'] or 'validation'}",
-            "-T", f"max_attempts={os.environ.get('GAIA_MAX_ATTEMPTS', '1')}",
-            "-T", f"code_timeout={os.environ.get('GAIA_TOOL_TIMEOUT', '180')}",
-            "--no-fail-on-error",
+            "--time-limit", os.environ.get("SAMPLE_TIME_LIMIT", "1800"),
+            "--message-limit", os.environ.get("MESSAGE_LIMIT", "100"),
         ]
         # Пишем вывод в файлы задачи, чтобы параллельные запуски Inspect не перемешались в терминале.
         completed = subprocess.run(cmd, cwd=ROOT, env=env, capture_output=True, text=True)
@@ -279,6 +295,7 @@ def run_job(
         heartbeat.join()
         for process in reversed(processes):
             stop(process)
+        shutil.rmtree(runtime, ignore_errors=True)
 
 
 def _heartbeat_loop(
@@ -292,19 +309,37 @@ def _heartbeat_loop(
 def main() -> int:
     # Значения, переданные shell, приоритетнее локального файла конфигурации.
     load_dotenv(ROOT / ".env", override=False)
+    cache = ROOT / "_state/cache"
+    cache.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("XDG_CACHE_HOME", str(cache))
+    os.environ.setdefault("XDG_DATA_HOME", str(cache / "data"))
+    os.environ.setdefault("HF_HOME", str(cache / "huggingface"))
+    os.environ.setdefault("INSPECT_EVALS_CACHE_DIR", str(cache / "inspect_evals"))
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(cache / "playwright"))
+    os.environ.setdefault("PIP_CACHE_DIR", str(cache / "pip"))
+    os.environ.setdefault("VLLM_CACHE_ROOT", str(cache / "vllm"))
+    os.environ.setdefault("TORCH_HOME", str(cache / "torch"))
+    os.environ.setdefault("TRITON_CACHE_DIR", str(cache / "triton"))
+    os.environ.setdefault("TORCHINDUCTOR_CACHE_DIR", str(cache / "torchinductor"))
     # PLAN необязателен: обычный запуск всегда читает репозиторный plans/default.csv.
     plan_path = Path(os.environ.get("PLAN", ROOT / "plans/default.csv")).resolve()
     model = os.environ.get("MODEL", "")
     model_context_limit = os.environ.get("MODEL_CONTEXT_LIMIT", "")
     backend_name = os.environ.get("BACKEND", "llama_docker")
+    benchmark = os.environ.get("BENCHMARK", "")
     parallel = int(os.environ.get("PARALLEL", "1"))
     gpu = os.environ.get("GPU", "")
     gpu_number = int(gpu) if gpu else 0
     # GPU влияет на порты по умолчанию, чтобы два worker'а не столкнулись на localhost.
     model_port = int(os.environ.get("MODEL_PORT", str(18080 + gpu_number)))
     scaffold_port_base = int(os.environ.get("SCAFFOLD_PORT_BASE", str(19080 + gpu_number * 100)))
-    if not model or not model_context_limit or parallel < 1:
-        raise SystemExit("MODEL and MODEL_CONTEXT_LIMIT are required; PARALLEL must be positive")
+    if not model or not model_context_limit or not benchmark or parallel < 1:
+        raise SystemExit("MODEL, MODEL_CONTEXT_LIMIT and BENCHMARK are required; PARALLEL must be positive")
+    if re.fullmatch(r"[a-z0-9_]+", benchmark) is None:
+        raise SystemExit("BENCHMARK must contain only lowercase letters, digits and underscores")
+    benchmark_runner = ROOT / "benchmark" / benchmark / "run.py"
+    if not benchmark_runner.is_file():
+        raise SystemExit(f"benchmark runner not found: {benchmark_runner}")
     if backend_name == "vllm" and not gpu:
         raise SystemExit("GPU is required for vllm")
     if not plan_path.is_file():
@@ -315,26 +350,34 @@ def main() -> int:
 
     plan = Plan(plan_path)
     backend = importlib.import_module(f"runner.backends.{backend_name}")
-    # GPU-lock общий для всех backend-типов: на одной карте разрешён ровно один worker.
-    state = ROOT / "_state" / f"worker-{'gpu-' + gpu if gpu else backend_name + '-local'}"
-    state.mkdir(parents=True, exist_ok=True)
+    worker_name = f"worker-{'gpu-' + gpu if gpu else backend_name + '-local'}"
+    # Lock имеет стабильный путь: уникальные каталоги запусков не защитили бы друг от друга.
     # Неблокирующий lock сразу сообщает о втором worker'е для того же GPU/backend.
-    lock_file = (state / "worker.lock").open("w")
+    lock_file = (ROOT / "_state" / f"{worker_name}.lock").open("w")
     try:
         fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         raise SystemExit(f"worker already runs for {backend_name} GPU {gpu or 'local'}")
 
+    worker_run_id = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
+    base = ROOT / "_state/logs" / f"{worker_name}-{worker_run_id}"
+    state = base
+    suffix = 2
+    while state.exists():
+        state = base.with_name(f"{base.name}-{suffix}")
+        suffix += 1
+    state.mkdir(parents=True)
+
     stale_after = int(os.environ.get("WORKER_STALE_AFTER", "120"))
     if stale_after < 3:
         raise SystemExit("WORKER_STALE_AFTER must be at least 3 seconds")
     heartbeat_interval = min(30, stale_after // 3)
-    worker_id = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
+    worker_id = f"{socket.gethostname()}:{os.getpid()}:{state.name}"
     recovered = plan.recover_orphans(stale_after)
     if recovered:
         print(f"Interrupted orphaned jobs: {recovered}")
 
-    (ROOT / "_state/llama-cache").mkdir(parents=True, exist_ok=True)
+    (ROOT / "_state/cache/llama").mkdir(parents=True, exist_ok=True)
     backend_log = (state / "backend.log").open("w")
     process = subprocess.Popen(
         backend.command(model, model_port, parallel), cwd=ROOT,
@@ -347,6 +390,8 @@ def main() -> int:
             # Этот цикл и есть диспетчер: он забирает строку при освобождении слота.
             futures = set()
             while True:
+                if process.poll() is not None:
+                    raise RuntimeError(f"model backend exited with code {process.returncode}")
                 futures = {future for future in futures if not future.done()}
                 while len(futures) < parallel:
                     row = plan.claim(model, backend_name, worker_id)
@@ -354,8 +399,8 @@ def main() -> int:
                         break
                     slot = next(slot for slot in range(parallel) if all(getattr(future, "slot", None) != slot for future in futures))
                     future = pool.submit(
-                        run_job, plan, row, worker_id, slot, model_port,
-                        scaffold_port_base, heartbeat_interval,
+                        run_job, plan, row, worker_id, state, slot, model_port,
+                        scaffold_port_base, heartbeat_interval, benchmark_runner,
                     )
                     future.slot = slot
                     futures.add(future)

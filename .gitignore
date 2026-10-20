@@ -7,4 +7,4 @@ __pycache__/
 *.csv.lock
 *.csv.bak
 /tests/
-/plans/default.csv
+/plans/**.csv

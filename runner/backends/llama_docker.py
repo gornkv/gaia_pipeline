@@ -3,9 +3,13 @@
 import os
 
 
+def sandbox() -> str:
+    return "docker"
+
+
 def command(model: str, port: int, parallel: int) -> list[str]:
     # Кэш на хосте переживает --rm, поэтому GGUF и mmproj не скачиваются повторно.
-    cache = os.path.abspath(os.environ.get("LLAMA_CACHE", "_state/llama-cache"))
+    cache = os.path.abspath(os.environ.get("LLAMA_CACHE", "_state/cache/llama"))
     return [
         "docker",
         "run",
@@ -23,8 +27,9 @@ def command(model: str, port: int, parallel: int) -> list[str]:
         "0.0.0.0",
         "--port",
         "8080",
+        # llama.cpp делит общий ctx-size между parallel slots.
         "--ctx-size",
-        os.environ["MODEL_CONTEXT_LIMIT"],
+        str(int(os.environ["MODEL_CONTEXT_LIMIT"]) * parallel),
         "--parallel",
         str(parallel),
         "--jinja",

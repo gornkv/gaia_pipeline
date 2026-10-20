@@ -6,9 +6,9 @@ import pkgutil
 import unittest
 from unittest.mock import patch
 
-import svc_scaffold.breakpoints as breakpoint_modules
-from svc_scaffold.breakpoints import common
-from svc_scaffold.core import enabled_breakpoints, enabled_breakpoints_handlers
+import svc_scaffold.features as feature_modules
+from svc_scaffold.features import common
+from svc_scaffold.core import enabled_features
 
 
 class ScaffoldTest(unittest.TestCase):
@@ -17,19 +17,23 @@ class ScaffoldTest(unittest.TestCase):
         names = []
         with patch.dict(os.environ, {"MODEL_CONTEXT_LIMIT": "32768"}):
             for module in pkgutil.iter_modules(
-                breakpoint_modules.__path__, breakpoint_modules.__name__ + "."
+                feature_modules.__path__, feature_modules.__name__ + "."
             ):
-                if module.name.endswith(".common"):
+                if module.name.endswith(".common") or module.name.rsplit(".", 1)[-1].startswith("-"):
                     continue
                 names.append(importlib.import_module(module.name).Breakpoints.feature_name())
         self.assertIn("budget_tracker", names)
         self.assertEqual(len(names), len(set(names)))
 
     def test_common_module_is_not_loaded_as_feature(self):
-        enabled_breakpoints_handlers.clear()
         with patch.dict(os.environ, {"FEATURES": "budget_tracker", "MODEL_CONTEXT_LIMIT": "32768"}):
-            handlers = enabled_breakpoints("test")
+            handlers = enabled_features()
         self.assertEqual([handler.feature_name() for handler in handlers], ["budget_tracker"])
+
+    def test_csv_feature_order_is_handler_order(self):
+        with patch.dict(os.environ, {"FEATURES": "voi,budget_tracker", "MODEL_CONTEXT_LIMIT": "32768"}):
+            handlers = enabled_features()
+        self.assertEqual([handler.feature_name() for handler in handlers], ["voi", "budget_tracker"])
 
     def test_branch_context_keeps_only_current_branch(self):
         context = common.BranchContextManager()

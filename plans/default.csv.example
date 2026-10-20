@@ -1,3 +1,3 @@
-job_id,model,backend,task,split,sample_no,feature,token_limit,tokens_used,status,worker_id,started_at,heartbeat_at,result,tool_calls,tool_timeouts,task_time_s,tool_time_s,eval_log,error
-1,unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M,llama_docker,gaia_level1,validation,1,budget_tracker,,,,,,,,,,,,,
-2,unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M,llama_docker,gaia_level1,validation,2,budget_tracker,,,,,,,,,,,,,
+job_id,model,backend,task,split,sample_no,feature,feature_envs,token_limit,tokens_used,status,worker_id,started_at,heartbeat_at,result,tool_calls,tool_timeouts,task_time_s,tool_time_s,eval_log,error
+1,unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M,llama_docker,gaia_level1,validation,1,budget_tracker,BUDGET_TRACKER_TOOL_LIMIT=20,,,,,,,,,,,,,
+2,unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M,llama_docker,gaia_level1,validation,2,budget_tracker,"BUDGET_TRACKER_TOOL_LIMIT=30,EXAMPLE_FLAG=1",,,,,,,,,,,,,

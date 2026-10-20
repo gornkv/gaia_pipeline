@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from svc_scaffold.breakpoints import common as h
+from svc_scaffold.features import common as h
 
 TOOL_LIMIT = int(os.getenv("BUDGET_TRACKER_TOOL_LIMIT", "30"))
 CTX_LIMIT = int(os.environ["MODEL_CONTEXT_LIMIT"])

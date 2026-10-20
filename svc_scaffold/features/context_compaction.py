@@ -7,7 +7,7 @@ import json
 import os
 from typing import Any
 
-from svc_scaffold.breakpoints import common as h
+from svc_scaffold.features import common as h
 
 COMPACTION_RATIO = float(os.getenv("CONTEXT_COMPACTION_RATIO", "0.7"))
 MAX_CONTEXT = int(os.environ["MODEL_CONTEXT_LIMIT"])

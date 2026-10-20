@@ -1,16 +1,24 @@
-# GAIA Inspect Pipeline
+# Benchmark Pipeline
 
 Плановый runner запускает один model backend и выполняет подходящие строки CSV
 параллельно. Централизованного диспетчера и базы данных нет.
 
 ## Подготовка
 
-Нужны Python 3.10+ и токен Hugging Face с доступом к `gaia-benchmark/GAIA`.
-Docker нужен только для локального backend `llama_docker`.
+Нужны Python 3.10+. Дополнительные зависимости и доступы описаны в каталоге
+выбранного benchmark, например [benchmark/gaia](benchmark/gaia/README.md).
+Docker нужен только для benchmark/backend, которые его используют.
 
 ```bash
 python3 -m venv .venv
+export XDG_CACHE_HOME="$PWD/_state/cache"
+export XDG_DATA_HOME="$PWD/_state/cache/data"
+export HF_HOME="$PWD/_state/cache/huggingface"
+export INSPECT_EVALS_CACHE_DIR="$PWD/_state/cache/inspect_evals"
+export PLAYWRIGHT_BROWSERS_PATH="$PWD/_state/cache/playwright"
+export PIP_CACHE_DIR="$PWD/_state/cache/pip"
 .venv/bin/pip install -r requirements.txt
+.venv/bin/pip install -r benchmark/gaia/requirements.txt
 .venv/bin/inspect-tool-support post-install
 .venv/bin/python -m playwright install chromium
 ```
@@ -18,7 +26,7 @@ python3 -m venv .venv
 Перед запуском экспортируйте секрет:
 
 - создайте токен на [Hugging Face → Access Tokens](https://huggingface.co/settings/tokens);
-- запросите доступ и примите условия на странице [GAIA dataset](https://huggingface.co/datasets/gaia-benchmark/GAIA).
+- примите условия доступа для выбранной модели и dataset, если они ограничены.
 
 Если токен уже создан, откройте страницу Access Tokens и нажмите значок
 копирования у нужного токена. Если эта машина уже авторизована через
@@ -65,25 +73,29 @@ Runner автоматически загружает корневой `.env`. П
 cp plans/default.csv.example plans/default.csv
 ```
 
-Сейчас поддерживаются `task`: `gaia`, `gaia_level1`, `gaia_level2`,
-`gaia_level3`; `split`: `validation` или `test`.
+Допустимые `task` и `split` определяет выбранный через `BENCHMARK` адаптер.
+Настройки GAIA перечислены в [benchmark/gaia](benchmark/gaia/README.md).
 
 В `feature` можно указать `baseline`, одну фичу или несколько через запятую без
 префикса `FEATURE_`. Порядок сохраняется и задаёт порядок middleware, например
 `voi,context_compaction`.
 
+В `feature_envs` задаются дополнительные переменные окружения конкретной строки:
+`VOI_TOOL_BUDGET=10` или `"VOI_TOOL_BUDGET=10,CTX_OPTION=value"`. Значение с
+запятыми необходимо заключать в CSV-кавычки.
+
 `token_limit` зарезервирован и пока не применяется. После выполнения worker
-заполняет `tokens_used`, `result`, число и время tool calls, общее время и путь к
-Inspect-логу.
+заполняет `tokens_used` максимальным размером входного контекста одного model
+request, а также `result`, число и время tool calls, общее время и путь к Inspect-логу.
 
 `status` принимает `running`, `done`, `error` или `interrupted`. Поле `result`
-уточняет итог: `solved`, `unsolved`, `timeout`, `sample_error`, `error` либо
-`interrupted`. Успешно выполненная, но нерешённая задача имеет `status=done` и
-`result=unsolved`.
+уточняет итог: `solved`, `unsolved`, `context_overflow`, `timeout`,
+`sample_error`, `error` либо `interrupted`. Успешно выполненная, но нерешённая
+задача имеет `status=done` и `result=unsolved`.
 
 Колонка `error` содержит только `1` или пустое значение. Подробности находятся в
-`eval_log`, `_state/jobs/<job_id>/inspect.stderr` либо
-`_state/jobs/<job_id>/error.log`, поэтому traceback не раздувает CSV.
+`eval_log`, `_state/logs/<worker>-<timestamp>/jobs/<job_id>-<timestamp>/inspect.stderr`
+либо соседний `error.log`, поэтому traceback не раздувает CSV.
 
 Во время работы строка хранит `worker_id`, `started_at` и `heartbeat_at`. При
 следующем запуске `running` без свежего heartbeat переводится в `interrupted`,
@@ -114,7 +126,7 @@ Worker забирает только строки, где одновременн
 
 Локальный backend использует официальный CPU image llama.cpp и небольшую
 Qwen3.5-0.8B. Первый запуск скачивает image и около 750 MB файлов модели; они
-остаются в `_state/llama-cache`.
+остаются в `_state/cache/llama`.
 
 ```bash
 MODEL='unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M' \
@@ -171,43 +183,71 @@ GPU_MEMORY_UTILIZATION=0.90
 VLLM_BIN=vllm
 TOOL_CALL_PARSER=qwen3_coder
 LLAMA_DOCKER_IMAGE=ghcr.io/ggml-org/llama.cpp:server
-LLAMA_CACHE=_state/llama-cache
-BASE_MODEL_REQUEST_TIMEOUT=1800
-GAIA_SAMPLE_TIME_LIMIT=1800
-GAIA_MESSAGE_LIMIT=100
-GAIA_TOOL_TIMEOUT=120
-GAIA_MAX_ATTEMPTS=1
+LLAMA_CACHE=_state/cache/llama
+# Timeout model request вычисляется как MODEL_CONTEXT_LIMIT / скорость.
+MODEL_AVERAGE_TOKENS_PER_SECOND=20
+SAMPLE_TIME_LIMIT=1800
+MESSAGE_LIMIT=100
+TOOL_TIMEOUT=120
 WORKER_STALE_AFTER=120
 ```
 
 ## Изоляция задач
 
 Model backend живёт весь прогон. Каждая задача получает собственные scaffold,
-inspect-tool-support, runtime-каталог и Inspect-лог. После завершения задачи её
-процессы останавливаются; модель остаётся загруженной для следующей строки.
+inspect-tool-support, временный runtime-каталог и Inspect-лог. Runtime создаётся
+коротким путём в системном temp из-за лимита длины Unix-сокета и удаляется после
+задачи; все диагностические файлы сразу пишутся в `_state/logs`. После завершения
+задачи её процессы останавливаются; модель остаётся загруженной для следующей строки.
+
+При `SIGKILL`, падении ОС или потере питания cleanup не выполняется, поэтому в
+системном temp может остаться каталог `benchmark-<job_id>-*`. В нём находится только
+неработающий сокет, полезные для разбора логи не теряются. После аварии строка
+остаётся `running`, пока следующий worker не отметит её `interrupted`; для повтора
+нужно вручную очистить runtime-поля строки в CSV.
 
 Sandbox и браузер автоматически следуют способу запуска backend: если имя
 backend заканчивается на `docker`, они запускаются в Docker; иначе — локально.
 
 ## Логи
 
-Все runtime-артефакты находятся в игнорируемом Git каталоге `_state/`:
+Все постоянные логи и управляемые проектом кэши находятся в игнорируемом Git
+каталоге `_state/`:
 
 ```text
 _state/
-├── worker-<backend или gpu>/
-│   ├── backend.log
-│   └── worker.lock
-└── jobs/<job_id>/
-    ├── scaffold.log
-    ├── tool-support.log
-    ├── inspect.stdout
-    ├── inspect.stderr
-    ├── error.log
-    ├── runtime/
-    └── inspect-logs/*.eval
+├── cache/
+│   ├── llama/
+│   ├── docker/
+│   ├── data/
+│   ├── huggingface/
+│   ├── inspect_ai/
+│   ├── inspect_evals/
+│   ├── playwright/
+│   ├── torch/
+│   ├── torchinductor/
+│   ├── triton/
+│   └── vllm/
+└── logs/
+    └── worker-<backend или gpu>-<UTC timestamp>/
+        ├── backend.log
+        └── jobs/
+            └── <job_id>-<UTC timestamp>/
+                ├── scaffold.log
+                ├── tool-support.log
+                ├── inspect.stdout
+                ├── inspect.stderr
+                ├── error.log
+                └── inspect-logs/*.eval
 ```
 
-Для конкретной строки плана начинайте с `_state/jobs/<job_id>/`. Структурированный
-результат находится в `.eval`; `error.log` создаётся только при ошибке самого
-runner, а ошибки Inspect дополнительно видны в `inspect.stderr`.
+Для конкретной строки плана начинайте с каталога worker, указанного в `worker_id`,
+затем переходите в `jobs/<job_id>-<timestamp>/`. Структурированный результат
+находится в `.eval`; `error.log` создаётся только при ошибке самого runner, а
+ошибки Inspect дополнительно видны в `inspect.stderr`. Стабильные lock-файлы
+лежат прямо в корне `_state`, поскольку lock внутри уникального каталога
+запуска не защищал бы от второго worker.
+
+Старые каталоги, созданные до появления worker-run группировки, находятся в
+`_state/logs/legacy-unassigned/jobs`: прежний формат не записывал связь каталога
+с конкретным запуском worker, поэтому надёжно восстановить её задним числом нельзя.
