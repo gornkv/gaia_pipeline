@@ -7,6 +7,14 @@ def sandbox() -> str:
     return "local"
 
 
+def base_url(port: int) -> str:
+    return f"http://127.0.0.1:{port}/v1"
+
+
+def api_key() -> str:
+    return os.environ.get("BASE_MODEL_API_KEY", "local")
+
+
 def command(model: str, port: int, parallel: int) -> list[str]:
     # max-num-seqs фиксирует требуемую ёмкость: worker не уменьшает PARALLEL молча.
     return [

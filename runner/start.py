@@ -156,14 +156,19 @@ class Plan:
             self._write(rows)
 
 
-def wait_http(process: subprocess.Popen, url: str, timeout: int = 600) -> None:
+def _http_request(url: str, api_key: str, timeout: int = 10) -> None:
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    urlopen(Request(url, headers=headers), timeout=timeout).close()
+
+
+def wait_http(process: subprocess.Popen | None, url: str, api_key: str = "", timeout: int = 600) -> None:
     """Ждёт готовность сервиса и одновременно обнаруживает его преждевременное завершение."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if process.poll() is not None:
+        if process is not None and process.poll() is not None:
             raise RuntimeError(f"process exited with code {process.returncode}")
         try:
-            urlopen(Request(url), timeout=2).close()
+            _http_request(url, api_key, timeout=2)
             return
         except Exception:
             time.sleep(1)
@@ -182,7 +187,7 @@ def stop(process: subprocess.Popen | None) -> None:
 
 
 def job_environment(
-    row: dict[str, str], slot: int, model_port: int, scaffold_port_base: int,
+    row: dict[str, str], slot: int, model_base_url: str, model_api_key: str, scaffold_port_base: int,
     state: Path, runtime: Path,
 ) -> dict[str, str]:
     env = os.environ.copy()
@@ -203,8 +208,8 @@ def job_environment(
         "PYTHONPATH": str(ROOT),
         "XDG_RUNTIME_DIR": str(runtime),
         "INSPECT_LOG_DIR": str(state / "inspect-logs"),
-        "BASE_MODEL_API_BASE_URL": f"http://127.0.0.1:{model_port}/v1",
-        "BASE_MODEL_API_KEY": os.environ.get("BASE_MODEL_API_KEY", "local"),
+        "BASE_MODEL_API_BASE_URL": model_base_url,
+        "BASE_MODEL_API_KEY": model_api_key,
         "BASE_MODEL_NAME": row["model"],
         "SCAFFOLD_PORT": str(scaffold_port),
         "SCAFFOLD_API_KEY": "local",
@@ -217,7 +222,8 @@ def job_environment(
 
 def run_job(
     plan: Plan, row: dict[str, str], worker_id: str, worker_logs: Path, slot: int,
-    model_port: int, scaffold_port_base: int, heartbeat_interval: int, benchmark_runner: Path,
+    model_base_url: str, model_api_key: str, scaffold_port_base: int,
+    heartbeat_interval: int, benchmark_runner: Path,
 ) -> None:
     # Runtime короткий из-за лимита AF_UNIX; диагностические файлы сразу пишутся в постоянные logs.
     run_id = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
@@ -238,7 +244,9 @@ def run_job(
     heartbeat.start()
     started = time.monotonic()
     try:
-        env = job_environment(row, slot, model_port, scaffold_port_base, state, runtime)
+        env = job_environment(
+            row, slot, model_base_url, model_api_key, scaffold_port_base, state, runtime
+        )
         # Tool-support хранит состояние браузера и сокета, поэтому каждой задаче нужен свой экземпляр.
         tool_log = (state / "tool-support.log").open("w")
         tool = subprocess.Popen([str(ROOT / ".venv/bin/inspect-tool-support"), "server"], env=env, stdout=tool_log, stderr=subprocess.STDOUT)
@@ -260,7 +268,7 @@ def run_job(
             "--ws", "none", "--host", "127.0.0.1", "--port", env["SCAFFOLD_PORT"],
         ], cwd=ROOT, env=env, stdout=scaffold_log, stderr=subprocess.STDOUT)
         processes.append(scaffold)
-        wait_http(scaffold, f"http://127.0.0.1:{env['SCAFFOLD_PORT']}/health", 60)
+        wait_http(scaffold, f"http://127.0.0.1:{env['SCAFFOLD_PORT']}/health", timeout=60)
 
         cmd = [
             str(ROOT / ".venv/bin/python"), str(benchmark_runner),
@@ -332,7 +340,8 @@ def main() -> int:
     gpu_number = int(gpu) if gpu else 0
     # GPU влияет на порты по умолчанию, чтобы два worker'а не столкнулись на localhost.
     model_port = int(os.environ.get("MODEL_PORT", str(18080 + gpu_number)))
-    scaffold_port_base = int(os.environ.get("SCAFFOLD_PORT_BASE", str(19080 + gpu_number * 100)))
+    default_scaffold_port = 29080 if backend_name == "external" else 19080 + gpu_number * 100
+    scaffold_port_base = int(os.environ.get("SCAFFOLD_PORT_BASE", str(default_scaffold_port)))
     if not model or not model_context_limit or not benchmark or parallel < 1:
         raise SystemExit("MODEL, MODEL_CONTEXT_LIMIT and BENCHMARK are required; PARALLEL must be positive")
     if re.fullmatch(r"[a-z0-9_]+", benchmark) is None:
@@ -350,7 +359,18 @@ def main() -> int:
 
     plan = Plan(plan_path)
     backend = importlib.import_module(f"runner.backends.{backend_name}")
-    worker_name = f"worker-{'gpu-' + gpu if gpu else backend_name + '-local'}"
+    if backend_name == "external":
+        if not (os.environ.get("MODEL_API_BASE_URL") or os.environ.get("BASE_MODEL_API_BASE_URL")):
+            raise SystemExit("MODEL_API_BASE_URL is required for external backend")
+        if not os.environ.get("MODEL_API_KEY"):
+            raise SystemExit("MODEL_API_KEY is required for external backend")
+    model_base_url = backend.base_url(model_port)
+    model_api_key = backend.api_key()
+    worker_name = (
+        "worker-external-local"
+        if backend_name == "external"
+        else f"worker-{'gpu-' + gpu if gpu else backend_name + '-local'}"
+    )
     # Lock имеет стабильный путь: уникальные каталоги запусков не защитили бы друг от друга.
     # Неблокирующий lock сразу сообщает о втором worker'е для того же GPU/backend.
     lock_file = (ROOT / "_state" / f"{worker_name}.lock").open("w")
@@ -379,19 +399,24 @@ def main() -> int:
 
     (ROOT / "_state/cache/llama").mkdir(parents=True, exist_ok=True)
     backend_log = (state / "backend.log").open("w")
+    command = backend.command(model, model_port, parallel)
     process = subprocess.Popen(
-        backend.command(model, model_port, parallel), cwd=ROOT,
-        env=os.environ | backend.environment(gpu), stdout=backend_log, stderr=subprocess.STDOUT,
-    )
+        command, cwd=ROOT, env=os.environ | backend.environment(gpu),
+        stdout=backend_log, stderr=subprocess.STDOUT,
+    ) if command else None
     try:
         # Fail-fast: backend обязан стартовать с запрошенным PARALLEL, автоматического снижения нет.
-        wait_http(process, f"http://127.0.0.1:{model_port}/v1/models")
+        wait_http(process, f"{model_base_url}/models", model_api_key)
+        next_external_check = time.monotonic() + 10
         with ThreadPoolExecutor(max_workers=parallel) as pool:
             # Этот цикл и есть диспетчер: он забирает строку при освобождении слота.
             futures = set()
             while True:
-                if process.poll() is not None:
+                if process is not None and process.poll() is not None:
                     raise RuntimeError(f"model backend exited with code {process.returncode}")
+                if process is None and time.monotonic() >= next_external_check:
+                    _http_request(f"{model_base_url}/models", model_api_key)
+                    next_external_check = time.monotonic() + 10
                 futures = {future for future in futures if not future.done()}
                 while len(futures) < parallel:
                     row = plan.claim(model, backend_name, worker_id)
@@ -399,8 +424,8 @@ def main() -> int:
                         break
                     slot = next(slot for slot in range(parallel) if all(getattr(future, "slot", None) != slot for future in futures))
                     future = pool.submit(
-                        run_job, plan, row, worker_id, state, slot, model_port,
-                        scaffold_port_base, heartbeat_interval, benchmark_runner,
+                        run_job, plan, row, worker_id, state, slot, model_base_url,
+                        model_api_key, scaffold_port_base, heartbeat_interval, benchmark_runner,
                     )
                     future.slot = slot
                     futures.add(future)

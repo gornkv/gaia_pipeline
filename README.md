@@ -165,6 +165,18 @@ MODEL_CONTEXT_LIMIT=65536 \
 .venv/bin/python runner/start.py
 ```
 
+Внешний OpenAI-compatible API не запускается и не останавливается worker'ом:
+
+```bash
+BACKEND=external \
+MODEL='provider/model-name' \
+MODEL_API_BASE_URL='https://api.example.com/v1' \
+MODEL_API_KEY='secret' \
+.venv/bin/python runner/start.py
+```
+
+Worker проверяет `/models` перед началом и каждые 10 секунд во время прогона.
+
 Для второй карты замените `GPU=0` на `GPU=1`. По умолчанию каждому GPU
 назначаются отдельные model/scaffold-порты. Второй worker на уже занятом GPU
 завершится с ошибкой.

@@ -7,6 +7,14 @@ def sandbox() -> str:
     return "docker"
 
 
+def base_url(port: int) -> str:
+    return f"http://127.0.0.1:{port}/v1"
+
+
+def api_key() -> str:
+    return os.environ.get("BASE_MODEL_API_KEY", "local")
+
+
 def command(model: str, port: int, parallel: int) -> list[str]:
     # Кэш на хосте переживает --rm, поэтому GGUF и mmproj не скачиваются повторно.
     cache = os.path.abspath(os.environ.get("LLAMA_CACHE", "_state/cache/llama"))

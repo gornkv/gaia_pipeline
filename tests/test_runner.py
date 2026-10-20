@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from benchmark.gaia.run import prepare_sandbox
-from runner.backends import llama_docker, vllm
+from runner.backends import external, llama_docker, vllm
 from runner.metrics import _is_context_overflow, _max_context_tokens, _tool_stats
 from runner.start import (
     FIELDS, Plan, feature_environment, job_environment, sandbox_for_backend,
@@ -98,6 +98,18 @@ class RunnerTest(unittest.TestCase):
     def test_backend_explicitly_selects_sandbox(self):
         self.assertEqual(sandbox_for_backend("llama_docker"), "docker")
         self.assertEqual(sandbox_for_backend("vllm"), "local")
+        self.assertEqual(sandbox_for_backend("external"), "docker")
+
+    def test_external_backend_uses_url_and_key_without_command(self):
+        with patch.dict("os.environ", {
+            "MODEL_API_BASE_URL": "https://example.test/v1/",
+            "MODEL_API_KEY": "secret",
+        }, clear=True):
+            self.assertIsNone(external.command("model", 0, 3))
+            self.assertEqual(external.base_url(0), "https://example.test/v1")
+            self.assertEqual(external.api_key(), "secret")
+        with patch.dict("os.environ", {"BASE_MODEL_API_BASE_URL": "https://old.test/v1/"}, clear=True):
+            self.assertEqual(external.base_url(0), "https://old.test/v1")
 
     @patch("benchmark.gaia.run.subprocess.run")
     @patch("benchmark.gaia.run.importlib.util.find_spec")
@@ -122,14 +134,14 @@ class RunnerTest(unittest.TestCase):
         # Scaffold выполняет middleware последовательно, поэтому порядок через запятую значим.
         row = dict.fromkeys(FIELDS, "")
         row.update(job_id="1", model="m", feature="new, second")
-        env = job_environment(row, 0, 18080, 19080, Path("/tmp/job"), Path("/tmp/runtime"))
+        env = job_environment(row, 0, "http://model/v1", "key", 19080, Path("/tmp/job"), Path("/tmp/runtime"))
         self.assertEqual(env["FEATURES"], "new,second")
         self.assertEqual(env["XDG_RUNTIME_DIR"], "/tmp/runtime")
 
     def test_feature_environments_are_parsed_per_job(self):
         row = dict.fromkeys(FIELDS, "")
         row.update(job_id="1", model="m", feature="voi", feature_envs="VOI_TOOL_BUDGET=7,FLAG=yes")
-        env = job_environment(row, 0, 18080, 19080, Path("/tmp/job"), Path("/tmp/runtime"))
+        env = job_environment(row, 0, "http://model/v1", "key", 19080, Path("/tmp/job"), Path("/tmp/runtime"))
         self.assertEqual(env["VOI_TOOL_BUDGET"], "7")
         self.assertEqual(env["FLAG"], "yes")
         self.assertEqual(feature_environment("EMPTY="), {"EMPTY": ""})
@@ -140,7 +152,7 @@ class RunnerTest(unittest.TestCase):
         row = dict.fromkeys(FIELDS, "")
         row.update(job_id="1", model="m", backend="llama_docker")
         with patch.dict("os.environ", {"MODEL_CONTEXT_LIMIT": "131072"}, clear=True):
-            env = job_environment(row, 0, 18080, 19080, Path("/tmp/job"), Path("/tmp/runtime"))
+            env = job_environment(row, 0, "http://model/v1", "key", 19080, Path("/tmp/job"), Path("/tmp/runtime"))
         self.assertEqual(env["MODEL_CONTEXT_LIMIT"], "131072")
 
 
