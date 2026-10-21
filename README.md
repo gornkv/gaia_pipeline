@@ -97,7 +97,12 @@ request, а также `result`, число и время tool calls, общее
 `eval_log`, `_state/logs/<worker>-<timestamp>/jobs/<job_id>-<timestamp>/inspect.stderr`
 либо соседний `error.log`, поэтому traceback не раздувает CSV.
 
-Во время работы строка хранит `worker_id`, `started_at` и `heartbeat_at`. При
+Столбец `worker_id` хранит короткое имя выполнившего задачу worker, например
+`MacBo-0-2610211842`: первые пять символов имени машины, номер GPU и дата/время
+запуска `YYMMDDHHMM` в UTC. При совпадении добавляется `-2`, затем `-3` и далее.
+Без GPU вместо номера используется `local`.
+Имя записывается при получении задачи и сохраняется после её завершения.
+Во время работы строка также хранит `started_at` и `heartbeat_at`. При
 следующем запуске `running` без свежего heartbeat переводится в `interrupted`,
 но не запускается повторно автоматически. Порог задаёт `WORKER_STALE_AFTER`, по
 умолчанию 120 секунд; для повтора очистите `status` вручную.
@@ -130,7 +135,7 @@ Qwen3.5-0.8B. Первый запуск скачивает image и около 7
 
 ```bash
 MODEL='unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M' \
-BACKEND=llama_docker \
+MODEL_BACKEND=llama_docker \
 PARALLEL=1 \
 MODEL_CONTEXT_LIMIT=24000 \
 .venv/bin/python runner/start.py
@@ -141,7 +146,7 @@ MODEL_CONTEXT_LIMIT=24000 \
 ```bash
 PLAN=plans/local.csv \
 MODEL='unsloth/Qwen3.5-0.8B-GGUF:Q4_K_M' \
-BACKEND=llama_docker \
+MODEL_BACKEND=llama_docker \
 MODEL_CONTEXT_LIMIT=24000 \
 .venv/bin/python runner/start.py
 ```
@@ -154,11 +159,11 @@ MODEL_CONTEXT_LIMIT=24000 \
 .venv/bin/pip install 'vllm>=0.22.1'
 ```
 
-`GPU`, `MODEL`, `BACKEND` и `PARALLEL` передаются окружением. Для GPU 0:
+`GPU`, `MODEL`, `MODEL_BACKEND` и `PARALLEL` передаются окружением. Для GPU 0:
 
 ```bash
 GPU=0 \
-BACKEND=vllm \
+MODEL_BACKEND=vllm \
 MODEL='QuantTrio/Qwen3.5-9B-AWQ' \
 PARALLEL=4 \
 MODEL_CONTEXT_LIMIT=65536 \
@@ -168,7 +173,7 @@ MODEL_CONTEXT_LIMIT=65536 \
 Внешний OpenAI-compatible API не запускается и не останавливается worker'ом:
 
 ```bash
-BACKEND=external \
+MODEL_BACKEND=external \
 MODEL='provider/model-name' \
 MODEL_API_BASE_URL='https://api.example.com/v1' \
 MODEL_API_KEY='secret' \
@@ -239,7 +244,7 @@ _state/
 │   ├── triton/
 │   └── vllm/
 └── logs/
-    └── worker-<backend или gpu>-<UTC timestamp>/
+    └── <машина:5>-<GPU или local>-<YYMMDDHHMM UTC>/
         ├── backend.log
         └── jobs/
             └── <job_id>-<UTC timestamp>/

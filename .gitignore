@@ -1,10 +1,12 @@
 _state/
 .DS_Store
 .env
+.clasp.json
+.clasprc.json
 .venv
 playwright-browsers/
 __pycache__/
 *.csv.lock
 *.csv.bak
 /tests/
-/plans/**.csv
+/runner/default.csv
