@@ -8,5 +8,8 @@ playwright-browsers/
 __pycache__/
 *.csv.lock
 *.csv.bak
-/tests/
-/runner/default.csv
+/tests/*
+!/tests/test_launcher.py
+!/tests/test_config.py
+!/tests/test_sheets_plan.js
+/worker/default.csv

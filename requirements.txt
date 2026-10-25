@@ -9,3 +9,4 @@ inspect-ai
 inspect-tool-support
 playwright
 python-dotenv
+psutil>=6,<8

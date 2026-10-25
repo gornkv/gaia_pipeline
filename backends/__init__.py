@@ -1,1 +1,1 @@
-"""Сборщики команд model-backend, которые использует runner.worker."""
+"""Бэкенды модели, запускаемые worker через python -m backends.<имя>."""
