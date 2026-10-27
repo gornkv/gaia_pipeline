@@ -94,6 +94,7 @@ def job_environment(
         "PATH": str(ROOT / ".venv/bin") + os.pathsep + env.get("PATH", os.defpath),
         "PYTHONPATH": str(ROOT),
         "XDG_RUNTIME_DIR": str(runtime),
+        "XDG_DATA_HOME": str(runtime),
         "INSPECT_LOG_DIR": str(logs / "inspect-logs"),
         "INSPECT_TRACE_FILE": str(logs / "inspect-trace.log"),
         "BENCHMARK_MODEL_BASE_URL": f"http://127.0.0.1:{scaffold_port}/v1",
@@ -112,7 +113,7 @@ def job_directories(job_id: str, worker_id: str, worker_logs: Path):
         (logs / "inspect-logs").mkdir(parents=True, exist_ok=True)
 
 
-        with tempfile.TemporaryDirectory(prefix=f"benchmark-{job_id}-", ignore_cleanup_errors=True) as socket_runtime:
+        with tempfile.TemporaryDirectory(prefix=f"{job_id}-", ignore_cleanup_errors=True) as socket_runtime:
             yield logs, Path(socket_runtime)
 
 
@@ -163,17 +164,14 @@ def start_scaffold(env: dict, logs: Path, port: int, processes: list) -> None:
 
 def run_benchmark(row: dict, env: dict, logs: Path, remaining: float) -> None:
     command = [
-        str(ROOT / ".venv/bin/python"), str(ROOT / "benchmarks" / row["benchmark"] / "run.py"),
-        "--task", row["task"], "--split", row["split"],
-        "--sample-no", row["sample_no"], "--model", env["WORKER_MODEL"],
-        "--sandbox", env["WORKER_TOOL_SANDBOX"], "--time-limit", str(math.ceil(remaining)),
-        "--report-file", str(logs / "benchmark.json"),
-        "--calls-file", str(logs / "calls.json"),
+        str(ROOT / ".venv/bin/python"), "-m", f"benchmarks.{row['benchmark']}",
     ]
 
 
     with (logs / "inspect.stdout").open("w") as stdout, (logs / "inspect.stderr").open("w") as stderr:
-        subprocess.run(command, cwd=ROOT, env=env, stdout=stdout, stderr=stderr, timeout=remaining, check=True)
+        subprocess.run(command, cwd=ROOT, env=env | {
+            "BENCHMARK_INDEX": row["index"], "BENCHMARK_TIME_LIMIT": str(math.ceil(remaining)),
+        }, stdout=stdout, stderr=stderr, timeout=remaining, check=True)
 
 
 def run_job(

@@ -81,7 +81,7 @@ worker.subprocess.Popen = popen
 queue = []
 for index in range(2):
     row = dict.fromkeys(worker.FIELDS, '')
-    row.update(job_id=f'job{index}', model='test', backend='fake', benchmark='gaia')
+    row.update(job_id=f'job{index}', model='test', benchmark='gaia')
     queue.append(row)
 def request(action, **values):
     if action == 'mark_stale_jobs_interrupted': return 0
@@ -110,7 +110,9 @@ raise SystemExit(worker.execute_plan(logs))
 
 
 class WorkerLifecycleTest(unittest.TestCase):
-    def test_entrypoint_runs_in_current_process(self):
+    @patch("worker.worker.logging.basicConfig")
+    @patch("worker.worker.archive_logs")
+    def test_entrypoint_runs_in_current_process(self, archive, configure_logging):
         with patch.object(worker, 'load_config'), patch.object(worker.signal, 'signal'), \
              patch.object(worker, 'manage_worker_processes', return_value=nullcontext(Path('/logs/test'))) as lifecycle, \
              patch.object(worker, 'execute_plan', return_value=3) as run, \
@@ -118,6 +120,7 @@ class WorkerLifecycleTest(unittest.TestCase):
              patch.object(sys, 'argv', ['worker']):
             self.assertEqual(worker.main(), 3)
             lifecycle.assert_called_once_with()
+            archive.assert_called_once_with()
             run.assert_called_once_with(Path('/logs/test'))
             spawn.assert_not_called()
 

@@ -1,15 +1,18 @@
 import csv
 import fcntl
 import json
+import logging
 import os
+import shutil
 import socket
 import signal
 import subprocess
 import sys
 import time
+import zipfile
 from concurrent.futures import ThreadPoolExecutor, wait
 from contextlib import ExitStack, contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
 from threading import Event, Lock, Thread
@@ -27,7 +30,7 @@ from worker.job import run_job, stop, wait_http
 
 
 FIELDS = [
-    "benchmark", "task", "split", "sample_no", "backend", "model", "feature", "feature_envs",
+    "benchmark", "index", "model", "feature", "feature_envs", "experiment_id",
     "worker_id", "job_id", "status", "result", "error", "max_input_tokens", "tool_calls",
     "tool_timeouts", "started_at", "heartbeat_at", "full_time_sum", "tool_time_sum",
     "avg_job_time_limit", "avg_tps", "avg_tool_count", "avg_tool_time", "jobs_count",
@@ -137,13 +140,22 @@ def reserve_ports(parallel: int):
 
 
 def plan_request(action: str, **values):
-
-    response = requests.post(
-        os.environ["WORKER_GOOGLE_SHEETS_API_URL"],
-        json={"token": os.environ["WORKER_GOOGLE_SHEETS_TOKEN"], "action": action, **values}, timeout=60,
-    )
-    response.raise_for_status()
-    data = response.json()
+    for attempt in range(3):
+        try:
+            response = requests.post(
+                os.environ["WORKER_GOOGLE_SHEETS_API_URL"],
+                json={"token": os.environ["WORKER_GOOGLE_SHEETS_TOKEN"], "action": action, **values}, timeout=60,
+            )
+            response.raise_for_status()
+            data = response.json()
+            if data.get("error") == "plan:busy":
+                raise requests.exceptions.RetryError("Google Sheets plan busy")
+            break
+        except requests.RequestException:
+            logging.getLogger(__name__).warning("Google Sheets action=%s attempt=%d/3 job_id=%s failed", action, attempt + 1, values.get("job_id", ""), exc_info=True)
+            if attempt == 2:
+                raise
+            time.sleep(attempt + 1)
     if not data.get("ok"):
         raise RuntimeError(f"Google Sheets plan: {data.get('error', 'invalid response')}")
     return data["result"]
@@ -212,7 +224,7 @@ def publish_result(results: dict, row: dict, snapshot: dict):
             os.fsync(results["output"].fileno())
             results["published"].add(job_id)
         try:
-            plan_request("update", job_id=job_id, values={key: values[key] for key in FIELDS[8:]})
+            plan_request("update", job_id=job_id, values={key: values[key] for key in FIELDS[6:]})
         except Exception as error:
             with (results["logs"] / "sync-errors.log").open("a", encoding="utf-8") as output:
                 output.write(f"job {job_id}: {error}\n")
@@ -236,7 +248,7 @@ def run_jobs(process: subprocess.Popen, model_port: int, results: dict) -> int:
 
                     row = plan_request(
                         "claim", model=os.environ["WORKER_MODEL_ALIAS"] or os.environ["WORKER_MODEL"],
-                        backend=os.environ["WORKER_BACKEND"], worker_id=results["logs"].name,
+                        worker_id=results["logs"].name,
                         exclude_job_ids=list(results["published"] | {future.row["job_id"] for future in futures}),
                     )
                 except Exception as error:
@@ -326,6 +338,55 @@ def stop_processes(record: dict) -> None:
             raise RuntimeError(f"Worker processes did not stop: {[process.pid for process in alive]}")
 
 
+def archive_logs() -> None:
+    logs = ROOT / "_state/logs"
+    runtime = ROOT / "_state/runtime/logs"
+    runtime.mkdir(parents=True, exist_ok=True)
+    try:
+        with (runtime / "archive.lock").open("a+") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return
+            archives = logs / "archives"
+            archives.mkdir(parents=True, exist_ok=True)
+            active = {path.stem for path in (ROOT / "_state/runtime/workers").glob("*.json")}
+            opened = {Path(item.path) for process in psutil.process_iter(["open_files"], ad_value=[])
+                      for item in process.info["open_files"]}
+            cutoff = datetime.now().date() - timedelta(days=1)
+            days = {}
+            for path in logs.rglob("*"):
+                if not path.is_file() or path.is_symlink() or archives in path.parents or path.relative_to(logs).parts[0] in active or path in opened:
+                    continue
+                stat = path.stat()
+                day = datetime.fromtimestamp(stat.st_mtime).date()
+                if day < cutoff:
+                    days.setdefault(day, []).append((path, stat))
+            for day, files in days.items():
+                archive = archives / f"{day}.zip"
+                temporary = archive.with_suffix(".zip.tmp")
+                if archive.exists():
+                    shutil.copyfile(archive, temporary)
+                with zipfile.ZipFile(temporary, "a" if archive.exists() else "w", compression=zipfile.ZIP_DEFLATED) as output:
+                    existing = set(output.namelist())
+                    for path, stat in files:
+                        name = path.relative_to(logs).as_posix()
+                        if name not in existing:
+                            output.write(path, name)
+                temporary.replace(archive)
+                for path, stat in files:
+                    current = path.stat()
+                    if (current.st_mtime_ns, current.st_size) == (stat.st_mtime_ns, stat.st_size):
+                        path.unlink()
+                        parent = path.parent
+                        while parent != logs and not any(parent.iterdir()):
+                            parent.rmdir()
+                            parent = parent.parent
+                logging.getLogger(__name__).info("Archived %d log files to %s", len(files), archive)
+    except Exception:
+        logging.getLogger(__name__).exception("Daily log archiving failed")
+
+
 def write_worker_heartbeat(path: Path, record: dict) -> None:
     record["heartbeat_at"] = time.time()
     temporary = path.with_suffix(".tmp")
@@ -334,12 +395,16 @@ def write_worker_heartbeat(path: Path, record: dict) -> None:
 
 
 def update_worker_heartbeat(path: Path, record: dict, stopped: Event) -> None:
+    archive_day = datetime.now().date()
     while not stopped.wait(float(os.environ["WORKER_HEARTBEAT_INTERVAL"])):
         with path.with_suffix(".lock").open("a+") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             if not path.exists():
                 return
             write_worker_heartbeat(path, record)
+        if archive_day != datetime.now().date():
+            Thread(target=archive_logs, daemon=True).start()
+            archive_day = datetime.now().date()
 
 
 def stop_stale_workers(directory: Path) -> None:
@@ -390,6 +455,8 @@ def main() -> int:
         signal.signal(event, lambda signum, _: sys.exit(128 + signum))
     load_config()
     with manage_worker_processes() as logs:
+        logging.basicConfig(filename=logs / "worker.log", level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+        archive_logs()
         return execute_plan(logs)
 
 

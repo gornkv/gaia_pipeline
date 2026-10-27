@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """GAIA task definitions и CLI-адаптер для общего benchmark worker."""
 
-import argparse
 import asyncio
 import functools
 import fcntl
@@ -20,7 +19,7 @@ from inspect_ai import Task, task
 from inspect_ai.hooks import Hooks, SampleEnd, SampleEvent, hooks
 from inspect_ai.agent import AgentPrompt, AgentSubmit, react
 from inspect_ai.tool import bash, python, web_browser, ToolError
-from inspect_evals.gaia.gaia import gaia as upstream_gaia
+from inspect_evals.gaia.gaia import DEFAULT_DOCKER_SANDBOX, gaia as upstream_gaia
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -48,9 +47,10 @@ class JobMetrics(Hooks):
         }
 
     def save(self):
+        logs = Path(os.environ["INSPECT_LOG_DIR"]).parent
         for path, value in [
-            (Path(os.environ["BENCHMARK_CALLS_FILE"]), list(self.calls.values())),
-            (Path(os.environ["BENCHMARK_REPORT_FILE"]), {"result": self.result, "error": self.error}),
+            (logs / "calls.json", list(self.calls.values())),
+            (logs / "benchmark.json", {"result": self.result, "error": self.error}),
         ]:
             temporary = path.with_suffix(".tmp")
             temporary.write_text(json.dumps(value), encoding="utf-8")
@@ -164,6 +164,7 @@ def _gaia(
         max_attempts=max_attempts,
         subset=subset,
         split=split,
+        sandbox="local" if os.environ["WORKER_TOOL_SANDBOX"] == "local" else DEFAULT_DOCKER_SANDBOX,
     )
     # Upstream GAIA по умолчанию ограничивает 100 сообщениями, даже без CLI-флага.
     result.message_limit = None
@@ -234,18 +235,7 @@ def _image_exists(image: str) -> bool:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--task", required=True)
-    parser.add_argument("--split", default="validation")
-    parser.add_argument("--sample-no", required=True)
-    parser.add_argument("--model", required=True)
-    parser.add_argument("--sandbox", required=True)
-    parser.add_argument("--time-limit", required=True)
-    parser.add_argument("--report-file", required=True)
-    parser.add_argument("--calls-file", required=True)
-    args = parser.parse_args()
-
-    if args.sandbox == "docker":
+    if os.environ["WORKER_TOOL_SANDBOX"] == "docker":
         prepare_sandbox()
     else:
         # Playwright сам проверяет кэш; после обновления пакета скачает соответствующий Chromium.
@@ -253,19 +243,16 @@ def main() -> None:
     env = os.environ | {
         "GAIA_MODEL_BASE_URL": os.environ["BENCHMARK_MODEL_BASE_URL"],
         "GAIA_MODEL_API_KEY": "local",
-        "GAIA_MODEL_NAME": args.model,
-        "BENCHMARK_REPORT_FILE": args.report_file,
-        "BENCHMARK_CALLS_FILE": args.calls_file,
+        "GAIA_MODEL_NAME": os.environ["WORKER_MODEL"],
     }
     command = [
-        str(ROOT / ".venv/bin/inspect"), "eval", f"{Path(__file__).resolve()}@{args.task}",
-        "--model", f"openai-api/gaia_model/{args.model}",
-        "--sandbox", args.sandbox,
+        str(ROOT / ".venv/bin/inspect"), "eval", f"{Path(__file__).resolve()}@gaia",
+        "--model", f"openai-api/gaia_model/{os.environ['WORKER_MODEL']}",
+        "--sandbox", os.environ["WORKER_TOOL_SANDBOX"],
         "--max-connections", "1",
-        "--limit", f"{args.sample_no}-{args.sample_no}",
-        "--time-limit", args.time_limit,
-        "-M", f"client_timeout={args.time_limit}",
-        "-T", f"split={args.split}",
+        "--limit", f"{os.environ['BENCHMARK_INDEX']}-{os.environ['BENCHMARK_INDEX']}",
+        "--time-limit", os.environ["BENCHMARK_TIME_LIMIT"],
+        "-M", f"client_timeout={os.environ['BENCHMARK_TIME_LIMIT']}",
         "-T", f"max_attempts={os.environ['BENCHMARK_GAIA_MAX_ATTEMPTS']}",
         "-T", f"code_timeout={os.environ['BENCHMARK_GAIA_TOOL_TIMEOUT']}",
         "--no-fail-on-error",

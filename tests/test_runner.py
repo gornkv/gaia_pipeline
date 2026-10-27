@@ -14,10 +14,10 @@ from benchmarks.gaia.run import prepare_sandbox
 from backends import external, llama
 from worker.job import (
     run_job,
-    feature_environment, job_environment, start_scaffold,
+    feature_environment, job_environment, job_directories, start_scaffold,
 )
 from worker.worker import (
-    FIELDS, plan_request, reserve_ports, reserve_gpu, start_backend, create_worker_logs, execute_plan, avg_columns, snapshot_columns,
+    FIELDS, plan_request, reserve_ports, reserve_gpu, start_backend, create_worker_logs, execute_plan, avg_columns, snapshot_columns, archive_logs,
 )
 
 
@@ -51,13 +51,27 @@ class RunnerTest(unittest.TestCase):
         task = SimpleNamespace(dataset=[sample])
         with tempfile.TemporaryDirectory() as directory, \
              patch.dict("os.environ", {"WORKER_TOOL_SANDBOX": "local", "XDG_RUNTIME_DIR": directory}), \
-             patch("benchmarks.gaia.run.upstream_gaia", return_value=task), \
+             patch("benchmarks.gaia.run.upstream_gaia", return_value=task) as upstream, \
              patch("benchmarks.gaia.run.selected_tools", return_value=[]), patch("benchmarks.gaia.run.react"):
             _gaia("2023_level1")
             target = str(Path(directory) / "shared_files/test.txt")
             self.assertEqual(sample.input, f"Read {target}")
             self.assertEqual(sample.files, {target: "/dataset/test.txt"})
             self.assertIsNone(sample.setup)
+            self.assertEqual(upstream.call_args.kwargs["sandbox"], "local")
+
+    def test_job_control_socket_fits_system_temp_directory(self):
+        import socket
+        from inspect_ai._control.discovery import default_socket_path
+        with tempfile.TemporaryDirectory() as directory, patch("worker.job.ROOT", Path(directory)):
+            with job_directories("12345678", "worker", Path(directory) / "logs") as (logs, runtime):
+                row = dict.fromkeys(FIELDS, "")
+                env = job_environment(row, 0, 19080, logs, runtime)
+                with patch.dict(os.environ, env):
+                    path = default_socket_path(os.getpid())
+                    self.assertTrue(path.is_relative_to(runtime))
+                    with socket.socket(socket.AF_UNIX) as server:
+                        server.bind(str(path))
 
     @patch("worker.worker.requests.post")
     def test_plan_accepts_custom_endpoint(self, post):
@@ -218,7 +232,7 @@ class RunnerTest(unittest.TestCase):
             progress = []
             observed = Event()
             row = dict.fromkeys(FIELDS, "")
-            row.update(job_id="1", benchmark="gaia", model="m", sample_no="1", split="validation")
+            row.update(job_id="1", benchmark="gaia", model="m", index="1")
 
             def popen(command, **kwargs):
                 env = kwargs["env"]
@@ -232,7 +246,10 @@ class RunnerTest(unittest.TestCase):
                 return Mock(poll=lambda: None)
 
             def execute(command, **kwargs):
-                self.assertEqual(command[command.index("--model") + 1], os.environ["WORKER_MODEL"])
+                self.assertEqual(command[1:], ["-m", "benchmarks.gaia"])
+                self.assertEqual(kwargs["env"]["BENCHMARK_INDEX"], "1")
+                self.assertEqual(kwargs["env"]["WORKER_MODEL"], os.environ["WORKER_MODEL"])
+                self.assertEqual(int(kwargs["env"]["BENCHMARK_TIME_LIMIT"]), 2300)
                 self.assertTrue(observed.wait(2))
                 return Mock(returncode=0)
 
@@ -263,7 +280,7 @@ class RunnerTest(unittest.TestCase):
                 root = Path(directory)
                 processes, socket_paths = [], []
                 row = dict.fromkeys(FIELDS, "")
-                row.update(job_id="failure", benchmark="gaia", task="gaia_level1", split="validation", sample_no="1")
+                row.update(job_id="failure", benchmark="gaia", index="1")
 
                 def spawn(command, **kwargs):
                     env = kwargs["env"]
@@ -302,7 +319,7 @@ class RunnerTest(unittest.TestCase):
             saved = set()
             for i in range(1, 4):
                 row = dict.fromkeys(FIELDS, "")
-                row.update(job_id=str(i), model="m", backend="external", status="running", worker_id="test")
+                row.update(job_id=str(i), model="m", status="running", worker_id="test")
                 queue.append(row)
 
             def call(action, **values):
@@ -364,16 +381,100 @@ class RunnerTest(unittest.TestCase):
             "WORKER_GOOGLE_SHEETS_API_URL": "https://script.google.com/macros/s/test/exec",
             "WORKER_GOOGLE_SHEETS_TOKEN": "secret",
         }):
-            self.assertEqual(plan_request("claim", model="m", backend="external", worker_id="worker", exclude_job_ids=["already-tried"]), {"job_id": "1"})
+            self.assertEqual(plan_request("claim", model="m", worker_id="worker", exclude_job_ids=["already-tried"]), {"job_id": "1"})
             self.assertEqual(post.call_args.kwargs["json"]["exclude_job_ids"], ["already-tried"])
             plan_request("update", job_id="1", values={"worker_id": "worker", "status": "running"})
             plan_request("mark_stale_jobs_interrupted", stale_after=120)
             plan_request("update", job_id="1", values={"worker_id": "worker", "status": "done"})
             post.return_value.json.return_value = {"ok": False, "error": "unauthorized"}
             with self.assertRaisesRegex(RuntimeError, "unauthorized"):
-                plan_request("claim", model="m", backend="external", worker_id="worker", exclude_job_ids=[])
+                plan_request("claim", model="m", worker_id="worker", exclude_job_ids=[])
         self.assertEqual([call.kwargs["json"]["action"] for call in post.call_args_list],
                          ["claim", "update", "mark_stale_jobs_interrupted", "update", "claim"])
+
+    @patch("worker.worker.time.sleep")
+    @patch("worker.worker.requests.post")
+    def test_google_plan_retries_lost_and_empty_responses(self, post, sleep):
+        from requests import ConnectionError
+        from requests.exceptions import JSONDecodeError
+        response = Mock()
+        response.json.return_value = {"ok": True, "result": {"job_id": "1"}}
+        post.side_effect = [ConnectionError("response lost"), JSONDecodeError("empty", "", 0), response]
+        with patch.dict(os.environ, {"WORKER_GOOGLE_SHEETS_API_URL": "https://test/exec", "WORKER_GOOGLE_SHEETS_TOKEN": "secret"}), \
+             self.assertLogs("worker.worker", level="WARNING") as logged:
+            self.assertEqual(plan_request("claim", model="m", worker_id="w", exclude_job_ids=[]), {"job_id": "1"})
+        self.assertEqual(len(logged.records), 2)
+        self.assertIn("action=claim attempt=1/3", logged.output[0])
+        self.assertIn("ConnectionError: response lost", logged.output[0])
+        self.assertIn("attempt=2/3", logged.output[1])
+        self.assertNotIn("secret", "\n".join(logged.output))
+        self.assertEqual(post.call_count, 3)
+        self.assertTrue(all(call == post.call_args_list[0] for call in post.call_args_list))
+        self.assertEqual(sleep.call_args_list, [unittest.mock.call(1), unittest.mock.call(2)])
+
+    def test_daily_log_archives_preserve_recent_active_and_open_files(self):
+        import zipfile
+        from datetime import datetime, timedelta
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as directory, patch("worker.worker.ROOT", Path(directory)):
+            root = Path(directory)
+            logs = root / "_state/logs"
+            def write(name, age):
+                path = logs / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(name)
+                stamp = (datetime.now() - timedelta(days=age)).timestamp()
+                os.utime(path, (stamp, stamp))
+                return path
+            today, yesterday = write("today/log", 0), write("yesterday/log", 1)
+            old, older = write("finished/log", 2), write("older/log", 3)
+            active, opened = write("active/log", 5), write("service/open.log", 5)
+            registry = root / "_state/runtime/workers"
+            registry.mkdir(parents=True)
+            (registry / "active.json").write_text("{}")
+            process = SimpleNamespace(info={"open_files": [SimpleNamespace(path=str(opened))]})
+            with patch("worker.worker.psutil.process_iter", return_value=[process]):
+                archive_logs()
+                self.assertTrue(all(path.exists() for path in [today, yesterday, active, opened]))
+                self.assertFalse(old.exists())
+                self.assertFalse(older.exists())
+                day = (datetime.now() - timedelta(days=2)).date()
+                archive = logs / "archives" / f"{day}.zip"
+                late = write("late/log", 2)
+                archive_logs()
+                self.assertFalse(late.exists())
+                with zipfile.ZipFile(archive) as saved:
+                    self.assertEqual(set(saved.namelist()), {"finished/log", "late/log"})
+                    self.assertEqual(saved.read("finished/log"), b"finished/log")
+                    self.assertIsNone(saved.testzip())
+                self.assertEqual(len(list((logs / "archives").glob("*.zip"))), 2)
+
+    @patch("worker.worker.time.sleep")
+    @patch("worker.worker.requests.post")
+    def test_google_plan_retries_busy_lock(self, post, sleep):
+        post.return_value.json.side_effect = [{"ok": False, "error": "plan:busy"}, {"ok": True, "result": None}]
+        with patch.dict(os.environ, {"WORKER_GOOGLE_SHEETS_API_URL": "https://test/exec", "WORKER_GOOGLE_SHEETS_TOKEN": "secret"}), \
+             self.assertLogs("worker.worker", level="WARNING") as logged:
+            self.assertIsNone(plan_request("update", job_id="job1", values={"status": "done"}))
+        self.assertEqual(post.call_count, 2)
+        self.assertIn("job_id=job1", logged.output[0])
+        self.assertIn("plan busy", logged.output[0])
+
+    def test_failed_log_archive_keeps_original_files(self):
+        from datetime import datetime, timedelta
+        with tempfile.TemporaryDirectory() as directory, patch("worker.worker.ROOT", Path(directory)), \
+             patch("worker.worker.psutil.process_iter", return_value=[]):
+            path = Path(directory) / "_state/logs/old.log"
+            path.parent.mkdir(parents=True)
+            path.write_text("important")
+            stamp = (datetime.now() - timedelta(days=3)).timestamp()
+            os.utime(path, (stamp, stamp))
+            with patch("worker.worker.zipfile.ZipFile.write", side_effect=OSError("disk full")), \
+                 self.assertLogs("worker.worker", level="ERROR") as logged:
+                archive_logs()
+            self.assertEqual(path.read_text(), "important")
+            self.assertFalse(list((path.parent / "archives").glob("*.zip")))
+            self.assertIn("disk full", logged.output[0])
 
     def test_gpu_lock_is_optional_and_released_after_error(self):
         with tempfile.TemporaryDirectory() as directory, patch("worker.worker.ROOT", Path(directory)):
@@ -520,13 +621,15 @@ class RunnerTest(unittest.TestCase):
         from benchmarks.gaia.run import main
         for sandbox in ("local", "docker"):
             with self.subTest(sandbox=sandbox), \
-                 patch.object(sys, "argv", ["gaia", "--task", "gaia_level1", "--sample-no", "7", "--model", "m",
-                                          "--sandbox", sandbox, "--time-limit", "60", "--report-file", "benchmark.json", "--calls-file", "calls.json"]), \
-                 patch.dict("os.environ", {"BENCHMARK_MODEL_BASE_URL": "http://model/v1"}), \
+                 patch.dict("os.environ", {"BENCHMARK_MODEL_BASE_URL": "http://model/v1", "WORKER_MODEL": "m",
+                                            "WORKER_TOOL_SANDBOX": sandbox, "BENCHMARK_INDEX": "7", "BENCHMARK_TIME_LIMIT": "60"}), \
                  patch("benchmarks.gaia.run.prepare_sandbox") as docker, \
                  patch("benchmarks.gaia.run.subprocess.run") as install, patch("benchmarks.gaia.run.os.execvpe") as execute:
                 main()
                 command = execute.call_args.args[1]
+                self.assertTrue(command[2].endswith("@gaia"))
+                self.assertEqual(command[command.index("--limit") + 1], "7-7")
+                self.assertNotIn("split=validation", command)
                 self.assertEqual(command[command.index("-M") + 1], "client_timeout=60")
                 if sandbox == "local":
                     install.assert_called_once_with([sys.executable, "-m", "playwright", "install", "chromium"], check=True)

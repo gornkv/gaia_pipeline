@@ -94,7 +94,7 @@ class ScaffoldTest(unittest.TestCase):
         from datetime import datetime, timezone, timedelta
         from inspect_ai.event import ToolEvent
         from inspect_ai.tool import ToolCallError
-        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, DEFAULTS | {"BENCHMARK_REPORT_FILE": str(Path(directory) / "benchmark.json"), "BENCHMARK_CALLS_FILE": str(Path(directory) / "calls.json")}):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, DEFAULTS | {"INSPECT_LOG_DIR": str(Path(directory) / "inspect-logs")}):
             hook = JobMetrics()
             start = datetime.now(timezone.utc)
             event = ToolEvent(id="call", function="echo", arguments={"text": "Привет"}, timestamp=start)
