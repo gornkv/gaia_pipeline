@@ -56,8 +56,9 @@ from pathlib import Path
 from worker import worker
 root, marker = Path(sys.argv[1]).parent, Path(sys.argv[1])
 worker.ROOT = root
+worker.PORT_RANGE = (30000, 30999)
 worker.load_config = lambda *_: None
-os.environ.update(WORKER_GPU_NUM='0', WORKER_PARALLEL='2', WORKER_BACKEND='fake',
+os.environ.update(WORKER_GPU_NUM='0', WORKER_PARALLEL='2', WORKER_BACKEND='fake', WORKER_BACKEND_START_TIMEOUT='60',
                   WORKER_NAME='recovery', WORKER_MODEL='test', WORKER_MODEL_ALIAS='',
                   WORKER_STALE_AFTER='300', WORKER_HEARTBEAT_INTERVAL='0.1')
 stage = os.environ.get('TEST_STAGE', '')
@@ -70,9 +71,8 @@ def pause():
 def popen(command, **kwargs):
     global backend
     if 'backends.fake' in command:
-        server = 'from http.server import HTTPServer, BaseHTTPRequestHandler; import sys; HTTPServer(("127.0.0.1", int(sys.argv[1])), BaseHTTPRequestHandler).serve_forever()'
-        # Для readiness достаточно любого успешного HTTP-ответа; запрос проверяется отдельно.
-        server = server.replace('BaseHTTPRequestHandler).serve_forever()', 'type("Handler", (BaseHTTPRequestHandler,), {"do_GET": lambda s: (s.send_response(200), s.end_headers())})).serve_forever()')
+        server = 'from http.server import HTTPServer, BaseHTTPRequestHandler; import sys,json; HTTPServer(("127.0.0.1", int(sys.argv[1])), BaseHTTPRequestHandler).serve_forever()'
+        server = server.replace('BaseHTTPRequestHandler).serve_forever()', 'type("Handler", (BaseHTTPRequestHandler,), {"do_GET": lambda s: (s.send_response(200), s.end_headers(), s.wfile.write(json.dumps({"data":[{"id":"test"}]}).encode()))})).serve_forever()')
         backend = original_popen([sys.executable, '-c', server, command[-1]], **kwargs)
         if stage == 'backend': pause()
         return backend
@@ -84,13 +84,12 @@ for index in range(2):
     row.update(job_id=f'job{index}', model='test', benchmark='gaia')
     queue.append(row)
 def request(action, **values):
-    if action == 'mark_stale_jobs_interrupted': return 0
     if action == 'claim': return queue.pop(0) if queue else None
-    if stage == 'csv' and values['values']['status'] == 'done':
+    if stage == 'csv' and any(item['values']['status'] == 'done' for item in values['updates']):
         # publish_result уже записала и fsync-нула CSV, но Google ещё не получил финал.
         pause()
 worker.plan_request = request
-def job(row, worker_id, logs, slot, port, interval, progress):
+def job(row, worker_id, logs, slot, port, interval, progress, control=None):
     script = 'import socket, sys, time; s=socket.socket(); s.bind(("127.0.0.1", int(sys.argv[1]))); s.listen(); time.sleep(120)'
     process = original_popen([sys.executable, '-c', script, str(port + slot)])
     children.append(process.pid)
@@ -100,7 +99,7 @@ def job(row, worker_id, logs, slot, port, interval, progress):
         time.sleep(120)
     if not stage and slot == 0:
         marker.write_text(json.dumps([os.getpid(), backend.pid, *children]))
-    return {'job': {'job_id': row['job_id'], 'status': 'done', 'error': None, 'full_time_seconds': 1, 'time_limit_seconds': 10},
+    return {'job': {'job_id': row['job_id'], 'status': 'done', 'error': None, 'full_time_seconds': 1, 'timestamp': 1, 'time_limit_seconds': 10},
             'benchmark': {'result': 'solved', 'error': None}, 'calls': [],
             'scaffold': {'model': {'calls': 1, 'max_input_tokens': 10, 'output_tokens_sum': 2,
                                     'time_sum_seconds': 1, 'usage_complete': True}}}
@@ -110,6 +109,67 @@ raise SystemExit(worker.execute_plan(logs))
 
 
 class WorkerLifecycleTest(unittest.TestCase):
+    def test_sigterm_stops_active_job_before_executor_waits(self):
+        self.check_sigterm_stops_job(False)
+
+    def test_sigterm_stops_job_process_spawned_after_stop_request(self):
+        self.check_sigterm_stops_job(True)
+
+    def check_sigterm_stops_job(self, delayed):
+        script = r"""
+import os,signal,subprocess,sys,time
+from pathlib import Path
+from unittest.mock import Mock
+from worker import worker
+worker.ROOT = Path(sys.argv[1])
+os.environ.update(WORKER_PARALLEL='1', WORKER_HEARTBEAT_INTERVAL='15',
+                  WORKER_STALE_AFTER='300', WORKER_MODEL='test', WORKER_MODEL_ALIAS='')
+row = dict.fromkeys(worker.FIELDS, '')
+row.update(job_id='active', worker_id='test', status='running')
+queue = [row]
+worker.plan_request = lambda action, **kwargs: queue.pop() if queue else None
+
+def job(*args, control):
+    if sys.argv[2] == 'late':
+        print('ready', flush=True)
+        control['stopped'].wait(2)
+        time.sleep(0.1)
+    child = subprocess.Popen([sys.executable, '-c', 'import time;time.sleep(60)'],
+                             env=os.environ | {'WORKER_JOB_TOKEN': control['record']['token']})
+    print(child.pid, flush=True)
+    child.wait()
+    raise RuntimeError("job process stopped")
+worker.run_job = job
+signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
+worker.run_jobs(Mock(poll=lambda: None), 18000,
+                {'logs': worker.ROOT / 'test', 'pending': {}, 'published': set()})
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            process = subprocess.Popen([sys.executable, '-c', script, directory, 'late' if delayed else 'early'],
+                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            child = None
+            try:
+                if delayed:
+                    self.assertEqual(process.stdout.readline().strip(), "ready")
+                    process.terminate()
+                    child = psutil.Process(int(process.stdout.readline()))
+                else:
+                    child = psutil.Process(int(process.stdout.readline()))
+                    process.terminate()
+                self.assertEqual(process.wait(timeout=5), 143)
+                self.assertFalse(child.is_running())
+                record = json.loads(next(Path(directory).glob("_state/runtime/jobs/*/*.json")).read_text())
+                self.assertEqual(record["stop_error"], "job:interrupted")
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait()
+                if child is not None and child.is_running():
+                    child.kill()
+                process.stdout.close()
+                process.stderr.close()
+
+
     @patch("worker.worker.logging.basicConfig")
     @patch("worker.worker.archive_logs")
     def test_entrypoint_runs_in_current_process(self, archive, configure_logging):

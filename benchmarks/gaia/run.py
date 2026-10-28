@@ -19,6 +19,8 @@ from inspect_ai import Task, task
 from inspect_ai.hooks import Hooks, SampleEnd, SampleEvent, hooks
 from inspect_ai.agent import AgentPrompt, AgentSubmit, react
 from inspect_ai.tool import bash, python, web_browser, ToolError
+from inspect_ai.scorer import value_to_float
+from inspect_ai.util import sandbox
 from inspect_evals.gaia.gaia import DEFAULT_DOCKER_SANDBOX, gaia as upstream_gaia
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -29,6 +31,7 @@ class JobMetrics(Hooks):
     def __init__(self):
         self.calls = {}
         self.result = None
+        self.score = None
         self.error = None
 
     def tool_event(self, event):
@@ -50,7 +53,7 @@ class JobMetrics(Hooks):
         logs = Path(os.environ["INSPECT_LOG_DIR"]).parent
         for path, value in [
             (logs / "calls.json", list(self.calls.values())),
-            (logs / "benchmark.json", {"result": self.result, "error": self.error}),
+            (logs / "benchmark.json", {"result": self.result, "score": self.score, "error": self.error}),
         ]:
             temporary = path.with_suffix(".tmp")
             temporary.write_text(json.dumps(value), encoding="utf-8")
@@ -73,7 +76,8 @@ class JobMetrics(Hooks):
         self.result = "context_overflow" if overflow else "timeout" if timed_out else "sample_error" if data.sample.error else "solved" if any(
             value == "C" or value is True or isinstance(value, (int, float)) and value > 0 for value in scores
         ) else "unsolved"
-        self.error = "benchmark:sample" if data.sample.error else None
+        self.score = value_to_float()(scores[0]) if scores and not data.sample.error and not timed_out and not overflow else None
+        self.error = "model:context_overflow" if overflow else "benchmark:sample" if data.sample.error else None
         if data.sample.error:
             reason = re.search(r"benchmark:(repeated_actions|no_tool_calls)\b", data.sample.error.message)
             if reason:
@@ -97,25 +101,26 @@ async def guard_repetition(state):
     limit = int(os.environ['BENCHMARK_GAIA_MAX_CONSECUTIVE_REPEATS'])
     if limit < 1:
         raise ValueError("BENCHMARK_GAIA_MAX_CONSECUTIVE_REPEATS must be positive")
-    no_tools = repeats = 0
-    previous = None
-    # Считаем по истории конкретного sample: параллельные job не делят счётчик.
+    no_tools = 0
+    signatures = []
+    results = {
+        message.tool_call_id: (message.text, str(message.error) if message.error else None)
+        for message in state.messages if message.role == "tool"
+    }
     for message in reversed(state.messages):
         if message.role != "assistant":
             continue
         calls = message.tool_calls
+        if calls and any(call.id not in results for call in calls):
+            break
         signature = json.dumps(
-            [(call.function, call.arguments) for call in calls] if calls else message.text.strip(),
+            [(call.function, call.arguments, results[call.id]) for call in calls] if calls else message.text.strip(),
             sort_keys=True, ensure_ascii=False,
         )
-        if previous is None:
-            previous = signature
-        if signature == previous:
-            repeats += 1
-        else:
-            break
-        if repeats >= limit:
-            raise RuntimeError(f"benchmark:repeated_actions: Agent stalled: {repeats} consecutive identical actions")
+        signatures.append(signature)
+    for period in range(1, len(signatures) // limit + 1):
+        if all(signatures[i] == signatures[i % period] for i in range(period * limit)):
+            raise RuntimeError(f"benchmark:repeated_actions: Agent stalled: {limit} consecutive identical action sequences (period={period})")
     for message in reversed(state.messages):
         if message.role != "assistant":
             continue
@@ -127,8 +132,25 @@ async def guard_repetition(state):
     return True
 
 
+
+
+def bash_with_status(seconds: float):
+    original = bash(seconds)
+
+    @functools.wraps(original)
+    async def execute(command: str) -> str:
+        result = await sandbox().exec(cmd=["bash", "--login", "-c", command], timeout=seconds)
+        output = (f"{result.stderr}\n" if result.stderr else "") + result.stdout
+        if result.returncode:
+            raise ToolError(f"Command exited with code {result.returncode}.\n{output}")
+        return output
+
+    return execute
+
+
+
 def selected_tools(seconds: float):
-    factories = {"bash": lambda: [bash(seconds)], "python": lambda: [python(seconds)], "browser": web_browser}
+    factories = {"bash": lambda: [bash_with_status(seconds)], "python": lambda: [python(seconds)], "browser": web_browser}
     names = os.environ["BENCHMARK_TOOLS"] or os.environ["BENCHMARK_GAIA_TOOLS"]
     return [timed_tool(tool, seconds) for name in names.split(",") for tool in factories[name.strip()]()]
 

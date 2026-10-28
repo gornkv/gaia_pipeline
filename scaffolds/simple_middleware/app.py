@@ -256,7 +256,7 @@ def create_app(logs: Path) -> FastAPI:
         try:
             response = await scaffold.chat_completions(payload)
         except ModelClientHTTPError as error:
-            raise HTTPException(error.status_code, error.detail) from error
+            return JSONResponse({"error": {"message": error.detail, "type": "model_error"}}, status_code=error.status_code)
 
         response = dict(response)
         response.update(id=f"scaffold-{uuid.uuid4().hex}", model=model)

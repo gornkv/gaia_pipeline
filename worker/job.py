@@ -14,6 +14,8 @@ from threading import Event, Thread
 from typing import Callable
 from urllib.request import Request, urlopen
 
+import psutil
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -34,12 +36,13 @@ def feature_environment(value: str) -> dict[str, str]:
     return result
 
 
-def _http_request(url: str, api_key: str, timeout: int = 10) -> None:
+def _http_request(url: str, api_key: str, timeout: int = 10) -> dict:
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-    urlopen(Request(url, headers=headers), timeout=timeout).close()
+    with urlopen(Request(url, headers=headers), timeout=timeout) as response:
+        return json.load(response)
 
 
-def wait_http(process: subprocess.Popen | None, url: str, api_key: str = "", timeout: int = 600) -> None:
+def wait_http(process: subprocess.Popen | None, url: str, api_key: str = "", timeout: int = 600, model: str | None = None) -> None:
 
 
     deadline = time.monotonic() + timeout
@@ -47,11 +50,13 @@ def wait_http(process: subprocess.Popen | None, url: str, api_key: str = "", tim
         if process is not None and process.poll() is not None:
             raise RuntimeError(f"process exited with code {process.returncode}")
         try:
-            _http_request(url, api_key, timeout=2)
-            return
+            response = _http_request(url, api_key, timeout=2)
+            if model is None or any(item["id"] == model for item in response["data"]):
+                return
         except Exception:
 
-            time.sleep(1)
+            pass
+        time.sleep(1)
     raise TimeoutError(f"service did not become ready: {url}")
 
 
@@ -66,6 +71,32 @@ def stop(process: subprocess.Popen | None) -> None:
     except subprocess.TimeoutExpired:
         process.kill()
         process.wait()
+
+
+def stop_token_processes(token: str, variable: str = "WORKER_JOB_TOKEN") -> None:
+    while True:
+        processes = []
+        for process in psutil.process_iter():
+            if process.pid == os.getpid():
+                continue
+            try:
+                if process.environ().get(variable) == token:
+                    processes.append(process)
+                    process.terminate()
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        if not processes:
+            return
+        _, alive = psutil.wait_procs(processes, timeout=3)
+        for process in alive:
+            try:
+                process.kill()
+            except psutil.NoSuchProcess:
+                pass
+        _, alive = psutil.wait_procs(alive, timeout=3)
+        if alive:
+            raise RuntimeError(f"Worker processes did not stop: {[process.pid for process in alive]}")
+
 
 
 def job_environment(
@@ -98,6 +129,7 @@ def job_environment(
         "INSPECT_LOG_DIR": str(logs / "inspect-logs"),
         "INSPECT_TRACE_FILE": str(logs / "inspect-trace.log"),
         "BENCHMARK_MODEL_BASE_URL": f"http://127.0.0.1:{scaffold_port}/v1",
+        "BACKEND_MODEL_SLOT_ID": str(slot),
     })
     return env
 
@@ -118,7 +150,7 @@ def job_directories(job_id: str, worker_id: str, worker_logs: Path):
 
 
 def job_snapshot(job: dict) -> dict:
-    snapshot = {"job": job["report"] | {"full_time_seconds": time.monotonic() - job["started"]}}
+    snapshot = {"job": job["report"] | {"full_time_seconds": time.monotonic() - job["started"], "timestamp": time.time()}}
     for component in ("benchmark", "scaffold", "calls"):
         path = job["logs"] / f"{component}.json"
 
@@ -171,13 +203,14 @@ def run_benchmark(row: dict, env: dict, logs: Path, remaining: float) -> None:
     with (logs / "inspect.stdout").open("w") as stdout, (logs / "inspect.stderr").open("w") as stderr:
         subprocess.run(command, cwd=ROOT, env=env | {
             "BENCHMARK_INDEX": row["index"], "BENCHMARK_TIME_LIMIT": str(math.ceil(remaining)),
-        }, stdout=stdout, stderr=stderr, timeout=remaining, check=True)
+        }, stdout=stdout, stderr=stderr, timeout=remaining + 30, check=True)
+
 
 
 def run_job(
     row: dict[str, str], worker_id: str, worker_logs: Path, slot: int,
     scaffold_port_base: int,
-    heartbeat_interval: float, on_progress: Callable,
+    heartbeat_interval: float, on_progress: Callable, control: dict | None = None,
 ) -> dict:
     with job_directories(row["job_id"], worker_id, worker_logs) as (logs, runtime):
 
@@ -197,6 +230,8 @@ def run_job(
             if re.fullmatch(r"[a-z0-9_]+", row["benchmark"]) is None:
                 raise ValueError("invalid benchmark name")
             env = job_environment(row, slot, scaffold_port_base, logs, runtime)
+            if control is not None:
+                env["WORKER_JOB_TOKEN"] = control["record"]["token"]
 
             error_code = "tools:start"
             start_tools(env, logs, processes)
@@ -226,6 +261,11 @@ def run_job(
             heartbeat.join()
             for process in reversed(processes):
                 stop(process)
+            if control is not None:
+                stop_token_processes(control["record"]["token"])
+        if control is not None and control["stopped"].is_set():
+            final_error = control["record"]["stop_error"]
+            final_status = "interrupted" if final_error == "job:interrupted" else "error"
         job["report"].update(status=final_status, error=final_error)
 
         return job_snapshot(job)

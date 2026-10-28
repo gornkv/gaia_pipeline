@@ -9,12 +9,12 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import patch, Mock, AsyncMock
 
 from scaffolds.simple_middleware import features as feature_modules
 from scaffolds.simple_middleware.features import common
 import httpx
-from scaffolds.simple_middleware.app import ModelClient, ModelClientHTTPError, create_app, enabled_features, avg_job_time_limit
+from scaffolds.simple_middleware.app import ModelClient, ModelClientHTTPError, create_app, enabled_features, avg_job_time_limit, Scaffold
 from benchmarks.gaia.run import timed_tool, guard_repetition, JobMetrics, selected_tools
 from inspect_ai.tool import ToolDef, ToolError
 
@@ -29,6 +29,44 @@ DEFAULTS = {
 
 
 class ScaffoldTest(unittest.TestCase):
+    def test_empty_feature_passes_requests_and_responses_without_extra_model_calls(self):
+        async def check():
+            with patch.dict(os.environ, DEFAULTS | {"SCAFFOLD_FEATURES": "empty"}, clear=True):
+                client = Mock(context_limit=65536)
+                scaffold = Scaffold(client)
+                self.assertEqual([f.feature_name() for f in scaffold.features], ["empty"])
+                payloads = [
+                    {"messages": [{"role": "user", "content": "task"}]},
+                    {"messages": [{"role": "user", "content": "task"},
+                                  {"role": "tool", "tool_call_id": "one", "content": "result"}]},
+                ]
+                for tool_calls in [[], [{"id": "next", "function": {"name": "browser", "arguments": "{}"}}]]:
+                    for payload in payloads:
+                        response = {"choices": [{"message": {"content": "answer", "tool_calls": tool_calls}}]}
+                        client.chat_completions = AsyncMock(return_value=response)
+                        self.assertIs(await scaffold.chat_completions(payload), response)
+                        client.chat_completions.assert_awaited_once_with(payload)
+                        self.assertIs(client.chat_completions.call_args.args[0], payload)
+        asyncio.run(check())
+
+    def test_scaffold_preserves_openai_error_message(self):
+        from openai import AsyncOpenAI, BadRequestError
+        async def check():
+            detail = "request (69679 tokens) exceeds the available context size (65536 tokens)"
+            with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, DEFAULTS | {
+                "BACKEND_MODEL_BASE_URL": "http://backend/v1", "WORKER_MODEL": "m",
+                "WORKER_BACKEND": "external", "SCAFFOLD_FEATURES": "",
+            }), patch("scaffolds.simple_middleware.app.ModelClient.chat_completions", side_effect=ModelClientHTTPError(400, detail)):
+                app = create_app(Path(directory))
+                async with AsyncOpenAI(base_url="http://scaffold/v1", api_key="local", http_client=httpx.AsyncClient(
+                    transport=httpx.ASGITransport(app=app),
+                )) as client:
+                    with self.assertRaises(BadRequestError) as caught:
+                        await client.chat.completions.create(model="m", messages=[{"role": "user", "content": "test"}])
+                self.assertEqual(caught.exception.body["message"], detail)
+                self.assertIn(detail, str(caught.exception))
+        asyncio.run(check())
+
     def test_scaffold_uses_worker_model_local_key_and_explicit_log_directory(self):
         async def check():
             requests = []
@@ -120,6 +158,44 @@ class ScaffoldTest(unittest.TestCase):
                 sample.error = SimpleNamespace(message=f"benchmark:{code}: Agent stalled")
                 asyncio.run(hook.on_sample_end(SimpleNamespace(sample=sample)))
                 self.assertEqual(hook.error, f"benchmark:{code}")
+            detail = "request (69679 tokens) exceeds the available context size (65536 tokens)"
+            sample.events = [SimpleNamespace(event="model", model_dump=lambda **_: {"event": "model", "error": detail})]
+            sample.error = SimpleNamespace(message=detail)
+            asyncio.run(hook.on_sample_end(SimpleNamespace(sample=sample)))
+            self.assertEqual(hook.result, "context_overflow")
+            self.assertEqual(hook.error, "model:context_overflow")
+
+    def test_gaia_report_preserves_scalar_score_and_normalizes_inspect_categories(self):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, DEFAULTS | {"INSPECT_LOG_DIR": str(Path(directory) / "inspect-logs")}):
+            hook = JobMetrics()
+            for native, expected in [("C", 1), ("I", 0), ("P", 0.5), (0.375, 0.375)]:
+                sample = SimpleNamespace(events=[], scores={"answer": SimpleNamespace(value=native)}, error=None)
+                asyncio.run(hook.on_sample_end(SimpleNamespace(sample=sample)))
+                self.assertEqual(json.loads((Path(directory) / "benchmark.json").read_text())["score"], expected)
+            sample.error = SimpleNamespace(message="interrupted")
+            asyncio.run(hook.on_sample_end(SimpleNamespace(sample=sample)))
+            self.assertIsNone(hook.score)
+
+    def test_bash_reports_silent_failures_without_changing_command_or_description(self):
+        from benchmarks.gaia.run import bash_with_status
+        from inspect_ai.tool import bash
+        from inspect_ai.util import ExecResult
+        tool = bash_with_status(120)
+        self.assertEqual(ToolDef(tool).parameters, ToolDef(bash(120)).parameters)
+        self.assertEqual(ToolDef(tool).description, ToolDef(bash(120)).description)
+        command = 'curl -s "https://invalid url/"'
+        async def check():
+            engine = SimpleNamespace(exec=AsyncMock(return_value=ExecResult(success=False, returncode=3, stdout='', stderr='')))
+            with patch('benchmarks.gaia.run.sandbox', return_value=engine):
+                with self.assertRaisesRegex(ToolError, 'exited with code 3'):
+                    await tool(command)
+                engine.exec.assert_awaited_once_with(cmd=['bash', '--login', '-c', command], timeout=120)
+                engine.exec.return_value = ExecResult(success=True, returncode=0, stdout='', stderr='')
+                self.assertEqual(await tool('true'), '')
+                engine.exec.return_value = ExecResult(success=False, returncode=2, stdout='partial', stderr='failure')
+                with self.assertRaisesRegex(ToolError, 'failure\npartial'):
+                    await tool('test')
+        asyncio.run(check())
 
     def test_tool_selection_preserves_order_and_uses_benchmark_defaults(self):
         with patch.dict(os.environ, DEFAULTS | {"BENCHMARK_TOOLS": "python,bash"}):
@@ -156,17 +232,61 @@ class ScaffoldTest(unittest.TestCase):
             state.messages.extend([message("user"), message()])
             with self.assertRaisesRegex(RuntimeError, "5 consecutive"):
                 asyncio.run(guard_repetition(state))
-            call = SimpleNamespace(function="bash", arguments={"command": "pwd"})
+            call = SimpleNamespace(id="bash", function="bash", arguments={"command": "pwd"})
             state.messages.extend([message(tool_calls=[call]), message()])
             self.assertTrue(asyncio.run(guard_repetition(state)))
             self.assertTrue(asyncio.run(guard_repetition(SimpleNamespace(messages=[]))))
-            with self.assertRaisesRegex(RuntimeError, "benchmark:repeated_actions"):
-                asyncio.run(guard_repetition(SimpleNamespace(messages=[message(tool_calls=[call], text=str(i)) for i in range(5)])))
             with self.assertRaisesRegex(RuntimeError, "benchmark:no_tool_calls"):
                 asyncio.run(guard_repetition(SimpleNamespace(messages=[message(text=str(i)) for i in range(5)])))
         with patch.dict(os.environ, DEFAULTS | {"BENCHMARK_GAIA_MAX_CONSECUTIVE_REPEATS": "1"}):
             with self.assertRaisesRegex(RuntimeError, "1 consecutive"):
                 asyncio.run(guard_repetition(SimpleNamespace(messages=[message()])))
+
+    def test_repeat_guard_distinguishes_progress_from_identical_tool_results(self):
+        from inspect_ai.model import ChatMessageAssistant, ChatMessageTool
+        from inspect_ai.tool import ToolCall
+
+        def history(outputs, parallel=False):
+            messages = []
+            for i, output in enumerate(outputs):
+                calls = [ToolCall(id=f"scroll-{i}", function="web_browser_scroll", arguments={"direction": "down"})]
+                if parallel:
+                    calls.append(ToolCall(id=f"bash-{i}", function="bash", arguments={"command": "pwd"}))
+                messages.append(ChatMessageAssistant(content="", tool_calls=calls))
+                if parallel:
+                    messages.append(ChatMessageTool(tool_call_id=f"bash-{i}", content="/workspace"))
+                messages.append(ChatMessageTool(tool_call_id=f"scroll-{i}", content=output))
+            return SimpleNamespace(messages=messages)
+
+        with patch.dict(os.environ, DEFAULTS, clear=True):
+            for parallel in (False, True):
+                with self.subTest(parallel=parallel):
+                    self.assertTrue(asyncio.run(guard_repetition(history([f"Page {i}" for i in range(10)], parallel))))
+                    with self.assertRaisesRegex(RuntimeError, "benchmark:repeated_actions"):
+                        asyncio.run(guard_repetition(history(["Page bottom"] * 5, parallel)))
+                    self.assertTrue(asyncio.run(guard_repetition(history(["Old"] * 5 + ["New"] * 4, parallel))))
+            pending = history(["Page bottom"] * 4)
+            pending.messages.append(ChatMessageAssistant(content="", tool_calls=[
+                ToolCall(id="pending", function="web_browser_scroll", arguments={"direction": "down"}),
+            ]))
+            self.assertTrue(asyncio.run(guard_repetition(pending)))
+
+
+    def test_repeat_guard_detects_multi_action_cycles_without_rejecting_progress(self):
+        from inspect_ai.model import ChatMessageAssistant, ChatMessageTool
+        from inspect_ai.tool import ToolCall
+        def history(progress):
+            messages = []
+            for i in range(15):
+                messages.append(ChatMessageAssistant(content="", tool_calls=[
+                    ToolCall(id=str(i), function="bash", arguments={"command": f"command-{i % 3}"}),
+                ]))
+                messages.append(ChatMessageTool(tool_call_id=str(i), content=f"result-{i if progress else i % 3}"))
+            return SimpleNamespace(messages=messages)
+        with patch.dict(os.environ, DEFAULTS, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "period=3"):
+                asyncio.run(guard_repetition(history(False)))
+            self.assertTrue(asyncio.run(guard_repetition(history(True))))
 
     def test_avg_timeout_defaults_factors_and_validation(self):
         with patch.dict(os.environ, DEFAULTS | {}, clear=True):
@@ -231,6 +351,28 @@ class ScaffoldTest(unittest.TestCase):
                 names.append(importlib.import_module(module.name).Breakpoints.feature_name())
         self.assertIn("budget_tracker", names)
         self.assertEqual(len(names), len(set(names)))
+
+    def test_budget_tracker_preserves_previous_prompt_and_does_not_duplicate_status(self):
+        with patch.dict(os.environ, DEFAULTS | {"WORKER_MODEL_CONTEXT_LIMIT": "65536"}):
+            tracker = importlib.import_module("scaffolds.simple_middleware.features.budget_tracker").Breakpoints()
+        tracker.before_task_call({"messages": []})
+        history = [{"role": "user", "content": "task"},
+                   {"role": "assistant", "content": "call one"},
+                   {"role": "tool", "tool_call_id": "one", "content": "result one"}]
+        first = tracker.before_chat_message({"messages": history})
+        self.assertEqual(history[-1]["content"], "result one")
+        tracker.store.update(tool_calls=2, prompt_tokens=1000, completion_tokens=100)
+        history += [{"role": "assistant", "content": "call two"},
+                    {"role": "tool", "tool_call_id": "two", "content": "result two"}]
+        second = tracker.before_chat_message({"messages": history})
+        self.assertEqual(second["messages"][:len(first["messages"])], first["messages"])
+        self.assertNotEqual(second["messages"][2]["content"], second["messages"][4]["content"])
+        self.assertEqual(tracker.before_chat_message(second), second)
+        tracker.after_task_call({"choices": [{"message": {"content": "continue"}}]})
+        followup = tracker.before_chat_message({"messages": history + [{"role": "assistant", "content": "continue"}]})
+        self.assertEqual(followup["messages"][:-1], second["messages"])
+        tracker.before_task_call({"messages": []})
+        self.assertEqual(tracker.store["tool_statuses"], {})
 
     def test_common_module_is_not_loaded_as_feature(self):
         with patch.dict(os.environ, DEFAULTS | {"SCAFFOLD_FEATURES": "budget_tracker", "WORKER_MODEL_CONTEXT_LIMIT": "32768"}):

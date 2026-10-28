@@ -7,4 +7,4 @@ WORKER_MODEL_CONTEXT_LIMIT=16384 \
 WORKER_PARALLEL=2 \
 WORKER_GPU_NUM='' \
 BACKEND_LLAMA_ACCELERATOR=metal \
-exec .venv/bin/python -m worker.worker
+exec python3.12 -m worker

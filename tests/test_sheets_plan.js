@@ -9,8 +9,12 @@ context.Utilities = {
 };
 vm.runInContext(fs.readFileSync('worker/google_sheets/Code.js', 'utf8'), context);
 const fields = vm.runInContext('FIELDS', context);
+assert.equal(fields[fields.indexOf('status') + 1], 'score');
+assert.equal(fields[fields.indexOf('tool_time_sum') + 1], 'tps');
+assert.equal(fields[fields.indexOf('tool_time_sum') + 2], 'avg_tps');
 let cells = [];
 const writes = [];
+const preparations = [];
 function makeSheet(getCells = () => cells) {
 let filter = null;
 const sheet = {
@@ -20,7 +24,7 @@ const sheet = {
   deleteRow: number => getCells().splice(number - 1, 1),
   getLastColumn: () => Math.max(0, ...getCells().map(row => row.length)),
   getLastRow: () => getCells().length,
-  setFrozenRows: () => {},
+  setFrozenRows: () => preparations.push('freeze'),
   getRange(row, col, height = 1, width = 1) {
     return {
       getDisplayValues: () => Array.from({length: height}, (_, i) =>
@@ -58,10 +62,13 @@ assert.equal(execute(request).job_id, claimed.job_id);
 assert.equal(execute({...request, exclude_job_ids: [claimed.job_id]}), null);
 assert.equal(execute({...request, worker_id: 'bob'}), null);
 const beforeUpdate = writes.length;
+const beforePreparation = preparations.length;
 execute({action: 'update', job_id: claimed.job_id, worker_id: 'alice',
-  values: {worker_id: 'alice', full_time_sum: '42', max_input_tokens: '1234', tool_calls: '2', status: 'running'}});
+  values: {worker_id: 'alice', full_time_sum: '42', max_input_tokens: '1234', tool_calls: '2', score: 0, status: 'running'}});
 assert.equal(writes.length, beforeUpdate + 1);
+assert.equal(cells[1][fields.indexOf('score')], '0');
 assert.deepEqual(writes.at(-1), [2, 7, 1, fields.length - 6]);
+assert.equal(preparations.length, beforePreparation);
 assert.equal(cells[1][fields.indexOf('full_time_sum')], '42');
 assert.equal(cells[1][fields.indexOf('max_input_tokens')], '1234');
 assert.equal(cells[1][fields.indexOf('status')], 'running');
@@ -87,14 +94,28 @@ cells.push(Array.from(fields, name => row[name]));
 const freshJob = execute({...request, exclude_job_ids: [claimed.job_id]});
 assert.notEqual(freshJob.job_id, claimed.job_id);
 assert.equal(cells[1][fields.indexOf('status')], '');
-// Только просроченные running-строки переводятся в interrupted; живые job не меняются.
 cells[1][fields.indexOf('status')] = 'running';
-cells[1][fields.indexOf('heartbeat_at')] = '2000-01-01 00:00:00';
-assert.equal(execute({action: 'mark_stale_jobs_interrupted', stale_after: 300}), 1);
-assert.equal(cells[1][fields.indexOf('status')], 'interrupted');
-assert.equal(cells[1][fields.indexOf('result')], 'interrupted');
-assert.equal(cells[1][fields.indexOf('error')], 'job:interrupted');
-assert.equal(cells[2][fields.indexOf('status')], 'running');
+const batch = cells.slice(1).map(row => ({job_id: row[fields.indexOf('job_id')], values: {
+  worker_id: row[fields.indexOf('worker_id')], status: 'running', tool_calls: '9',
+}}));
+const beforeBatch = writes.length;
+execute({action: 'update_many', updates: batch});
+assert.equal(writes.length, beforeBatch + 1);
+assert.deepEqual(writes.at(-1), [2, 7, 2, fields.length - 6]);
+execute({action: 'update_many', updates: batch});
+assert.equal(cells[1][fields.indexOf('tool_calls')], '9');
+assert.equal(cells[2][fields.indexOf('tool_calls')], '9');
+const rejected = execute({action: 'update_many', updates: [
+  {...batch[0], values: {...batch[0].values, tool_calls: '10'}},
+  {...batch[1], values: {...batch[1].values, worker_id: 'wrong-owner'}},
+]});
+assert.equal(rejected.length, 1);
+assert.equal(rejected[0].job_id, batch[1].job_id);
+assert.equal(rejected[0].error, 'job_changed');
+assert.equal(cells[1][fields.indexOf('tool_calls')], '10');
+assert.equal(cells[2][fields.indexOf('tool_calls')], '9');
+assert.throws(() => execute({action: 'update', ...batch[1], values: {...batch[1].values, worker_id: 'wrong-owner'}}), /ownership/);
+assert.equal(fields.includes('heartbeat_at'), false);
 cells[0][0] = 'wrong';
 assert.throws(() => execute({action: 'initialize'}), /header/);
 assert.equal(cells[0][0], 'wrong');
@@ -145,7 +166,8 @@ assert.equal(properties.get('SHEET_ID'), '7');
 context.setup();
 assert.equal(triggers.length, 1);
 const experimentFields = Array.from(vm.runInContext('EXPERIMENT_FIELDS', context));
-grids.get('Experiments')().push(['gaia', '1, 2', 'm, n', 'budget_tracker,voi', 'FLAG=yes', '']);
+assert.equal(experimentFields.indexOf('repeat') + 1, experimentFields.indexOf('experiment_id'));
+grids.get('Experiments')().push(['gaia', '1, 2', 'm, n', 'budget_tracker,voi', 'FLAG=yes', '', '']);
 function processAt(date) {
   return context.processExperimentsAndArchive(book, context.PropertiesService.getScriptProperties(), new Date(date));
 }
@@ -160,13 +182,13 @@ for (const job of cells.slice(1)) {
 assert.deepEqual(cells.slice(1).map(row => [row[1], row[2]]), [['1','m'],['1','n'],['2','m'],['2','n']]);
 assert.equal(processAt('2026-10-27T12:15:00Z').created, 0);
 cells[1][fields.indexOf('status')] = 'done';
-cells[1][fields.indexOf('heartbeat_at')] = '2026-10-25 00:00:00';
+cells[1][fields.indexOf('started_at')] = '2026-10-25 00:00:00';
 cells[1][fields.indexOf('job_id')] = 'job1';
 cells[1][fields.indexOf('worker_id')] = 'worker1';
 cells[2][fields.indexOf('status')] = 'running';
-cells[2][fields.indexOf('heartbeat_at')] = '2000-01-01 00:00:00';
+cells[2][fields.indexOf('started_at')] = '2000-01-01 00:00:00';
 cells[3][fields.indexOf('status')] = 'error';
-cells[3][fields.indexOf('heartbeat_at')] = '2026-10-26 00:00:01';
+cells[3][fields.indexOf('started_at')] = '2026-10-26 00:00:01';
 assert.equal(processAt('2026-10-27T12:30:00Z').archived, 0);
 assert.equal(processAt('2026-10-28T00:00:00Z').archived, 1);
 assert.equal(grids.get('Completed Jobs')().length, 2);
@@ -175,6 +197,20 @@ assert.equal(processAt('2026-10-28T23:00:00Z').archived, 0);
 assert.equal(processAt('2026-10-29T00:00:00Z').archived, 1);
 assert.equal(cells.filter(row => row[fields.indexOf('status')] === 'running').length, 1);
 assert.equal(grids.get('Completed Jobs')().length, 3);
+// Повторы одной пары sample/model идут подряд; обработанный эксперимент повторно не размножается.
+grids.get('Experiments')().push(['gaia', '1,2', 'm,n', 'empty', '', '3', '']);
+assert.equal(processAt('2026-10-29T00:01:00Z').created, 12);
+const repeatId = grids.get('Experiments')()[2][experimentFields.indexOf('experiment_id')];
+const repeated = cells.slice(1).filter(r => r[fields.indexOf('experiment_id')] === repeatId);
+assert.equal(repeated.length, 12);
+assert.deepEqual(repeated.map(row => [row[1], row[2]]), [
+  ['1','m'], ['1','m'], ['1','m'], ['1','n'], ['1','n'], ['1','n'],
+  ['2','m'], ['2','m'], ['2','m'], ['2','n'], ['2','n'], ['2','n'],
+]);
+for (const index of ['1', '2']) for (const model of ['m', 'n']) {
+  assert.equal(repeated.filter(r => r[1] === index && r[2] === model).length, 3);
+}
+assert.equal(processAt('2026-10-29T00:02:00Z').created, 0);
 properties.set('LAST_ARCHIVE_DAY', context.Utilities.formatDate(new Date(), 'UTC', 'yyyy-MM-dd'));
 const reads = [];
 context.SpreadsheetApp = {
@@ -191,7 +227,7 @@ context.SpreadsheetApp = {
   flush() {throw new Error('Idle run must not flush or prepare sheets');},
 };
 assert.deepEqual({...context.maintainPlan()}, {created: 0, archived: 0});
-assert.deepEqual(reads, [[2, 1, 1, 6]]);
+assert.deepEqual(reads, [[2, 1, 2, 7]]);
 context.LockService = {getScriptLock: () => ({tryLock: () => false, hasLock: () => false})};
 context.ContentService = {MimeType: {JSON: 'application/json'}, createTextOutput: text => ({setMimeType: () => text})};
 assert.deepEqual(JSON.parse(context.doPost({postData: {contents: JSON.stringify({token: 'existing-secret', action: 'claim'})}})),

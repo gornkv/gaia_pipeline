@@ -1,6 +1,7 @@
 """Нативный llama.cpp с выбором ускорителя: общий KV-пул и отдельный лимит каждого слота."""
 
 import fcntl
+import math
 import os
 import platform
 import shutil
@@ -69,6 +70,8 @@ def install() -> None:
 
 
 def enrich_payload(payload: dict) -> dict:
+    # Пока job выполняет инструмент, другие jobs не должны переиспользовать её слот.
+    payload["id_slot"] = int(os.environ["BACKEND_MODEL_SLOT_ID"])
     budget = os.environ["BACKEND_LLAMA_THINKING_BUDGET_LIMIT"]
     if budget and int(budget) > 0:
         payload["reasoning_budget_tokens"] = int(budget)
@@ -78,11 +81,14 @@ def enrich_payload(payload: dict) -> dict:
 def run(port: int) -> None:
     install()
     model = os.environ["WORKER_MODEL"]
+    parallel = int(os.environ["WORKER_PARALLEL"])
+    context = int(os.environ["WORKER_MODEL_CONTEXT_LIMIT"])
+    pool = math.ceil(context * parallel * min(1, 0.5 + 0.672 / math.sqrt(parallel)))
     cmd = ["llama-server", "-hf", model,
            "--alias", model, "--api-key", "local", "--host", "127.0.0.1", "--port", str(port),
-           "--ctx-size", os.environ["BACKEND_LLAMA_KV_POOL_SIZE"], "--parallel", os.environ["WORKER_PARALLEL"],
+           "--ctx-size", str(pool), "--parallel", str(parallel),
            # Слоты делят один KV-пул, но каждый диалог ограничен WORKER_MODEL_CONTEXT_LIMIT.
-           "--kv-unified", "--kv-unified-per-slot", os.environ["WORKER_MODEL_CONTEXT_LIMIT"],
+           "--kv-unified", "--kv-unified-per-slot", str(context),
            # Continuous batching смешивает работу слотов; prompt cache переиспользует префикс.
            # Не сохраняем idle-слоты в дополнительный RAM-кэш автоматически.
            "--cont-batching", "--cache-prompt", "--no-cache-idle-slots",

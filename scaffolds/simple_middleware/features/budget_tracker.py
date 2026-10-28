@@ -42,10 +42,32 @@ class Breakpoints:
         self.store["prompt_tokens"] = 0
         self.store["completion_tokens"] = 0
         self.store["last_tool_result_tokens"] = 0
+        # Каждому результату инструмента запоминаем один неизменный текст подсказки о бюджете.
+        # Раньше подсказка жила только в текущем запросе и исчезала из истории следующего запроса.
+        # Очищаем сохранённые тексты только в начале новой задачи, чтобы не переносить их между задачами.
+        self.store["tool_statuses"] = {}
         return payload
 
     def before_chat_message(self, payload):
         msgs = list(h.messages(payload))
+        # Берём карту прежних подсказок; создаём её и при обращении без предварительного before_task_call.
+        statuses = self.store.setdefault("tool_statuses", {})
+        # Inspect хранит исходные сообщения без наших добавлений и присылает их заново при каждом обращении.
+        # Поэтому восстанавливаем подсказки во ВСЕХ прежних результатах, а не только в последнем.
+        for i, msg in enumerate(msgs):
+            # Пользовательские и системные сообщения не меняем; function — прежний формат результата инструмента.
+            if isinstance(msg, dict) and msg.get("role") in {"tool", "function"}:
+                # Идентификатор связывает подсказку с конкретным вызовом даже при одинаковом тексте результатов.
+                # Для прежнего формата без идентификатора используем позицию сообщения в истории.
+                status = statuses.get(msg.get("tool_call_id", i))
+                # При повторной обработке уже дополненного сообщения не добавляем тот же текст второй раз.
+                if status and not _content_text(msg.get("content")).endswith(status):
+                    # Копируем сообщение: исходную историю Inspect не меняем, дополняем только запрос к модели.
+                    # Возвращаем дословно старую подсказку: пересчёт её чисел изменил бы уже закешированный префикс.
+                    msgs[i] = dict(msg, content=f"{_content_text(msg.get('content'))}\n{status}".strip())
+        # Сохраняем восстановленную историю даже если ниже не обнаружится нового результата инструмента.
+        # Иначе ранний return снова удалил бы старые подсказки, например при продолжении текстового ответа.
+        payload = dict(payload, messages=msgs)
         last_tool_idx = None
         for i in range(len(msgs) - 1, -1, -1):
             if isinstance(msgs[i], dict) and msgs[i].get("role") in {"tool", "function"}:
@@ -73,11 +95,19 @@ class Breakpoints:
         if last_tool_result_tokens:
             status += f"; latest tool result(s) about {last_tool_result_tokens} tokens"
         status += ".]"
-        print(f"[BUDGET_TRACKER] appending transient status to tool result: {status}", flush=True)
+        # Используем тот же ключ, что и при восстановлении старых сообщений выше.
+        key = msgs[last_tool_idx].get("tool_call_id", last_tool_idx)
+        # Новый вызов получает свежую подсказку, повторный — прежнюю, даже если счётчики уже изменились.
+        # Это не даёт повторной обработке одного вызова переписать историю и сбросить кеш с этого места.
+        status = statuses.setdefault(key, status)
+        # Подсказка теперь сохраняется в последующих запросах, поэтому больше не называем её временной в логе.
+        print(f"[BUDGET_TRACKER] appending status to tool result: {status}", flush=True)
 
-        payload = dict(payload)
         tool_msg = dict(msgs[last_tool_idx])
-        tool_msg["content"] = f"{_content_text(tool_msg.get('content'))}\n{status}".strip()
+        # Последний результат мог уже получить свою подсказку при восстановлении истории выше.
+        if not _content_text(tool_msg.get("content")).endswith(status):
+            # Дописываем новую подсказку в конец результата: предыдущие сообщения остаются неизменными.
+            tool_msg["content"] = f"{_content_text(tool_msg.get('content'))}\n{status}".strip()
         msgs[last_tool_idx] = tool_msg
         payload["messages"] = msgs
         return payload
@@ -109,7 +139,10 @@ class Breakpoints:
         return payload
 
     def after_task_call(self, response):
-        self.store = {}
+        # Scaffold вызывает этот обработчик и после обычного текстового ответа без вызова инструмента.
+        # Такой ответ ещё не гарантирует окончания задачи: Inspect может продолжить тот же диалог.
+        # Поэтому здесь больше не очищаем self.store: иначе исчезнут подсказки из следующего запроса.
+        # Для новой задачи состояние сбрасывает before_task_call, а после job завершается весь scaffold-процесс.
         return response, None
 
     def before_tool_call(self, response):

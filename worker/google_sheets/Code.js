@@ -2,12 +2,12 @@
 // Все worker должны обращаться к одному развёртыванию этого проекта.
 const FIELDS = [
   'benchmark', 'index', 'model', 'feature', 'feature_envs', 'experiment_id',
-  'worker_id', 'job_id', 'status', 'result', 'error', 'max_input_tokens', 'tool_calls',
-  'tool_timeouts', 'started_at', 'heartbeat_at', 'full_time_sum', 'tool_time_sum',
-  'avg_job_time_limit', 'avg_tps', 'avg_tool_count', 'avg_tool_time', 'jobs_count',
+  'worker_id', 'job_id', 'status', 'score', 'result', 'error', 'max_input_tokens', 'tool_calls',
+  'tool_timeouts', 'started_at', 'full_time_sum', 'tool_time_sum',
+  'tps', 'avg_tps', 'avg_job_time_limit', 'avg_tool_count', 'avg_tool_time', 'jobs_count',
 ];
 const OUTPUT_FIELDS = FIELDS.slice(6);
-const EXPERIMENT_FIELDS = ['benchmark', 'samples', 'models', 'features', 'feature_envs', 'experiment_id'];
+const EXPERIMENT_FIELDS = ['benchmark', 'samples', 'models', 'features', 'feature_envs', 'repeat', 'experiment_id'];
 
 function initializeSheet(sheet, fields) {
   const width = Math.max(sheet.getLastColumn(), fields.length);
@@ -56,13 +56,13 @@ function processExperimentsAndArchive(book, config, now = new Date()) {
   let created = 0;
   const list = value => value.split(',').map(item => item.trim()).filter(Boolean);
   readRows(experiments, EXPERIMENT_FIELDS).forEach((cells, i) => {
-    const [benchmark, samples, models, features, featureEnvs, existingId] = cells;
+    const [benchmark, samples, models, features, featureEnvs, repeat, existingId] = cells;
     if (existingId || !benchmark || !samples || !models) return;
     const id = Utilities.getUuid().replace(/-/g, '').slice(0, 8);
-    const rows = list(samples).flatMap(index => list(models).map(model => {
+    const rows = list(samples).flatMap(index => list(models).flatMap(model => Array.from({length: Number(repeat || 1)}, () => {
       const values = {benchmark, index, model, feature: features, feature_envs: featureEnvs, experiment_id: id};
       return FIELDS.map(field => values[field] || '');
-    }));
+    })));
     appendRows(book.getSheetByName('Jobs'), rows);
     experiments.getRange(i + 2, EXPERIMENT_FIELDS.indexOf('experiment_id') + 1).setNumberFormat('@').setValue(id);
     created += rows.length;
@@ -75,9 +75,9 @@ function processExperimentsAndArchive(book, config, now = new Date()) {
     const completed = book.getSheetByName('Completed Jobs');
     const cutoff = Date.parse(day + 'T00:00:00Z') - 2 * 86400000;
     const rows = readRows(jobs, FIELDS);
-    const status = FIELDS.indexOf('status'), heartbeat = FIELDS.indexOf('heartbeat_at');
+    const status = FIELDS.indexOf('status'), started = FIELDS.indexOf('started_at');
     const archive = rows.map((cells, i) => ({cells, number: i + 2})).filter(({cells}) =>
-      ['done', 'error', 'interrupted'].includes(cells[status]) && Date.parse(cells[heartbeat].replace(' ', 'T') + 'Z') <= cutoff);
+      ['done', 'error', 'interrupted'].includes(cells[status]) && Date.parse(cells[started].replace(' ', 'T') + 'Z') <= cutoff);
     // Если копирование удалось, а удаление прервалось, следующий запуск не дублирует архив.
     const key = cells => cells[FIELDS.indexOf('worker_id')] + '/' + cells[FIELDS.indexOf('job_id')];
     const existing = new Set(readRows(completed, FIELDS).map(key));
@@ -150,9 +150,10 @@ function doPost(e) {
 
 function executePlan(sheet, request) {
   // Пустая шапка создаётся автоматически; непустую ошибочную шапку не затираем.
-  initializeSheet(sheet, FIELDS);
+  const lastRow = sheet.getLastRow();
+  if (request.action === 'initialize' || lastRow === 0) initializeSheet(sheet, FIELDS);
   if (request.action === 'initialize') return null;
-  const count = Math.max(0, sheet.getLastRow() - 1);
+  const count = Math.max(0, lastRow - 1);
   const rows = count ? sheet.getRange(2, 1, count, FIELDS.length).getDisplayValues() : [];
   const ids = new Set();
   const jobs = [];
@@ -167,13 +168,16 @@ function executePlan(sheet, request) {
     jobs.push({row, number: i + 2});
   });
   // Пишем только изменяемые служебные ячейки: настройки эксперимента людей сохраняются.
-  function update(job, values) {
-    for (const field of Object.keys(values)) {
-      if (!OUTPUT_FIELDS.includes(field)) throw new Error('invalid output field');
-    }
-    const updated = {...job.row, ...values};
-    sheet.getRange(job.number, FIELDS.indexOf(OUTPUT_FIELDS[0]) + 1, 1, OUTPUT_FIELDS.length)
-      .setNumberFormat('@').setValues([OUTPUT_FIELDS.map(field => String(updated[field]))]);
+  function update(changes) {
+    const groups = [];
+    changes.sort((a, b) => a.job.number - b.job.number).forEach(({job, values}) => {
+      const updated = {...job.row, ...values};
+      const cells = OUTPUT_FIELDS.map(field => String(updated[field]));
+      const group = groups[groups.length - 1];
+      if (group && group.number + group.rows.length === job.number) group.rows.push(cells);
+      else groups.push({number: job.number, rows: [cells]});
+    });
+    groups.forEach(({number, rows}) => sheet.getRange(number, 7, rows.length, OUTPUT_FIELDS.length).setValues(rows));
   }
   const now = Utilities.formatDate(new Date(), 'UTC', 'yyyy-MM-dd HH:mm:ss');
   if (request.action === 'claim') {
@@ -190,31 +194,25 @@ function executePlan(sheet, request) {
       while (jobs.some(({row}) => row.job_id === id));
     }
     const values = Object.fromEntries(OUTPUT_FIELDS.map(field => [field, '']));
-    Object.assign(values, {job_id: id, status: 'running', worker_id: request.worker_id, started_at: now, heartbeat_at: now});
-    update(job, values);
+    Object.assign(values, {job_id: id, status: 'running', worker_id: request.worker_id, started_at: now});
+    update([{job, values}]);
     return {...job.row, ...values};
   }
-  if (request.action === 'mark_stale_jobs_interrupted') {
-    if (!(request.stale_after >= 3)) throw new Error('invalid stale_after');
-    let interrupted = 0;
-    for (const job of jobs) {
-      const timestamp = job.row.heartbeat_at || job.row.started_at;
-      const last = Date.parse(timestamp.includes('T') ? timestamp : timestamp.replace(' ', 'T') + 'Z');
-      if (job.row.status === 'running' && (!Number.isFinite(last) || Date.now() - last > request.stale_after * 1000)) {
-        update(job, {status: 'interrupted', result: 'interrupted', error: 'job:interrupted', heartbeat_at: now});
-        interrupted++;
-      }
+  if (!['update', 'update_many'].includes(request.action)) throw new Error('unknown action');
+  const byId = new Map(jobs.map(job => [`${job.row.worker_id}/${job.row.job_id}`, job]));
+  const updates = request.action === 'update_many' ? request.updates : [request];
+  const rejected = [];
+  const changes = updates.flatMap(item => {
+    const owner = item.worker_id || item.values.worker_id;
+    const job = byId.get(`${owner}/${item.job_id}`);
+    if (!job || job.row.status !== 'running' && job.row.status !== item.values.status || job.row.worker_id !== item.values.worker_id) {
+      if (request.action === 'update') throw new Error('job ownership changed');
+      rejected.push({job_id: item.job_id, error: 'job_changed'});
+      return [];
     }
-    return interrupted;
-  }
-  const owner = request.worker_id || request.values?.worker_id;
-  const job = jobs.find(({row}) => row.job_id === request.job_id && row.worker_id === owner);
-  if (!job) throw new Error('job ownership changed or job disappeared from plan');
-  if (request.action === 'update') {
-    if (job.row.status !== 'running' && job.row.status !== request.values.status || job.row.worker_id !== request.values.worker_id) throw new Error('job ownership changed');
-    update(job, request.values);
-  } else {
-    throw new Error('unknown action');
-  }
-  return null;
+    if (Object.keys(item.values).some(field => !OUTPUT_FIELDS.includes(field))) throw new Error('invalid output field');
+    return [{job, values: item.values}];
+  });
+  update(changes);
+  return request.action === 'update_many' ? rejected : null;
 }

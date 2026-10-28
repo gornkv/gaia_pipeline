@@ -13,6 +13,40 @@ from worker.worker import ROOT, load_config
 
 
 class ConfigTest(unittest.TestCase):
+    def test_python_bootstrap_installs_once_and_refreshes_changed_requirements(self):
+        import importlib
+        bootstrap = importlib.import_module("worker.__main__")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            script = root / "worker/__main__.py"
+            script.parent.mkdir()
+            script.write_text("bootstrap")
+            requirements = root / "requirements.txt"
+            requirements.write_text("package==1")
+            benchmark = root / "benchmarks/gaia/requirements.txt"
+            benchmark.parent.mkdir(parents=True)
+            benchmark.write_text("gaia==1")
+            def create(path):
+                (path / "bin").mkdir(parents=True, exist_ok=True)
+                (path / "bin/python").touch()
+            with patch.object(bootstrap, "__file__", str(script)), \
+                 patch.object(bootstrap.venv, "EnvBuilder") as builder, \
+                 patch.object(bootstrap.subprocess, "run") as install, \
+                 patch.object(bootstrap.os, "execv") as execute:
+                builder.return_value.create.side_effect = create
+                bootstrap.main()
+                bootstrap.main()
+                self.assertEqual(install.call_count, 1)
+                self.assertEqual(execute.call_count, 2)
+                self.assertEqual(execute.call_args.args[1], [str(root / ".venv/bin/python"), "-m", "worker.worker"])
+                self.assertIn(str(benchmark), install.call_args.args[0])
+                ready = root / "_state/runtime/python/install.ready"
+                previous = ready.read_text()
+                requirements.write_text("package==2")
+                bootstrap.main()
+                self.assertEqual(install.call_count, 2)
+                self.assertNotEqual(ready.read_text(), previous)
+
     def test_worker_defaults_use_requested_names_and_small_model(self):
         from dotenv import dotenv_values
         defaults = dotenv_values(ROOT / "worker/.env.default", interpolate=False)

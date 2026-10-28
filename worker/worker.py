@@ -15,7 +15,7 @@ from contextlib import ExitStack, contextmanager
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from pathlib import Path
-from threading import Event, Lock, Thread
+from threading import Event, Thread
 from uuid import uuid4
 
 import requests
@@ -23,17 +23,18 @@ import psutil
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
+PORT_RANGE = (18000, 18999)
 
 sys.path.insert(0, str(ROOT))
 
-from worker.job import run_job, stop, wait_http
+from worker.job import run_job, stop, wait_http, stop_token_processes
 
 
 FIELDS = [
     "benchmark", "index", "model", "feature", "feature_envs", "experiment_id",
-    "worker_id", "job_id", "status", "result", "error", "max_input_tokens", "tool_calls",
-    "tool_timeouts", "started_at", "heartbeat_at", "full_time_sum", "tool_time_sum",
-    "avg_job_time_limit", "avg_tps", "avg_tool_count", "avg_tool_time", "jobs_count",
+    "worker_id", "job_id", "status", "score", "result", "error", "max_input_tokens", "tool_calls",
+    "tool_timeouts", "started_at", "full_time_sum", "tool_time_sum",
+    "tps", "avg_tps", "avg_job_time_limit", "avg_tool_count", "avg_tool_time", "jobs_count",
 ]
 
 
@@ -57,11 +58,29 @@ def snapshot_columns(snapshot: dict) -> dict:
 
 
     durations = [] if calls is None else [call["duration_seconds"] for call in calls if call["duration_seconds"] is not None]
+    max_input = None if scaffold is None else scaffold["model"]["max_input_tokens"]
+    intervals = []
+    for call in calls or []:
+        start = datetime.fromisoformat(call["started_at"].replace("Z", "+00:00")).timestamp()
+        end = job["timestamp"] if call["duration_seconds"] is None else start + call["duration_seconds"]
+        intervals.append((start, min(end, job["timestamp"])))
+    tool_wall_time, previous_end = 0.0, float("-inf")
+    for start, end in sorted(intervals):
+        tool_wall_time += max(0.0, end - max(start, previous_end))
+        previous_end = max(previous_end, end)
+    non_tool_time = job["full_time_seconds"] - tool_wall_time
+    score = benchmark.get("score") if benchmark is not None else None
+    if score is None and benchmark is not None and benchmark["result"] in {"solved", "unsolved"}:
+        score = int(benchmark["result"] == "solved")
+    error = job["error"] or (benchmark["error"] if benchmark is not None else None) or ""
+    status = "error" if job["status"] == "done" and error else job["status"]
     return {
-        "status": job["status"],
-        "result": "timeout" if job["error"] == "job:timeout" else "error" if job["status"] == "error" else "" if job["status"] == "running" and benchmark is None else benchmark["result"] or "",
-        "error": job["error"] or (benchmark["error"] if benchmark is not None else None) or "",
-        "max_input_tokens": "" if scaffold is None or scaffold["model"]["max_input_tokens"] is None else str(scaffold["model"]["max_input_tokens"]),
+        "status": status,
+        "score": "" if score is None else score,
+        "result": "interrupted" if job["status"] == "interrupted" else "timeout" if job["error"] == "job:timeout" else "error" if job["status"] == "error" else "" if job["status"] == "running" and benchmark is None else benchmark["result"] or "",
+        "error": error,
+        "max_input_tokens": "" if max_input is None else str(max_input),
+        "tps": f"{max_input / non_tool_time:.2f}" if max_input is not None and calls is not None and non_tool_time > 0 else "",
         "tool_calls": "" if calls is None else str(len(calls)),
 
 
@@ -72,22 +91,19 @@ def snapshot_columns(snapshot: dict) -> dict:
     }
 
 
-def avg_columns(avg: dict, snapshot: dict | None = None) -> dict[str, str]:
-    if snapshot is not None and snapshot["scaffold"] is not None and snapshot["benchmark"] is not None:
-        model = snapshot["scaffold"]["model"]
+def avg_columns(avg: dict, snapshot: dict) -> dict[str, str]:
+    model = snapshot["scaffold"]["model"] if snapshot["scaffold"] is not None else None
+    if model is not None and snapshot["benchmark"] is not None:
         benchmark = snapshot["benchmark"]
 
 
         if snapshot["job"]["status"] == "done" and not snapshot["job"]["error"] and not benchmark["error"] and benchmark["result"] in {"solved", "unsolved"} and model["usage_complete"] and model["max_input_tokens"] is not None:
-            avg["tokens"] += model["max_input_tokens"]
-            avg["time"] += model["time_sum_seconds"]
             avg["tools"] += len(snapshot["calls"])
             avg["tool_time"] += sum(call["duration_seconds"] for call in snapshot["calls"] if call["duration_seconds"] is not None)
             avg["jobs"] += 1
 
 
     return {
-        "avg_tps": f"{avg['tokens'] / avg['time']:.2f}" if avg["time"] else "",
         "avg_tool_count": f"{avg['tools'] / avg['jobs']:.2f}" if avg["jobs"] else "",
         "avg_tool_time": f"{avg['tool_time'] / avg['tools']:.2f}" if avg["tools"] else "",
         "jobs_count": str(avg["jobs"]),
@@ -96,7 +112,7 @@ def avg_columns(avg: dict, snapshot: dict | None = None) -> dict[str, str]:
 
 @contextmanager
 def reserve_ports(parallel: int):
-    first, last = 18000, 18999
+    first, last = PORT_RANGE
     size = last - first + 1
     directory = ROOT / "_state/runtime/workers/ports"
     directory.mkdir(parents=True, exist_ok=True)
@@ -202,85 +218,212 @@ def start_backend(logs: Path, port: int):
         )
 
     try:
-        wait_http(process, f"http://127.0.0.1:{port}/v1/models", "local")
+        wait_http(process, f"http://127.0.0.1:{port}/v1/models", "local", timeout=float(os.environ["WORKER_BACKEND_START_TIMEOUT"]), model=os.environ["WORKER_MODEL"])
         yield process
     finally:
         stop(process)
 
 
 def publish_result(results: dict, row: dict, snapshot: dict):
-    with results["lock"]:
-        job_id = snapshot["job"]["job_id"]
-        if job_id in results["published"]:
+    job_id = snapshot["job"]["job_id"]
+    if job_id in results["published"]:
+        return
+    final = snapshot["job"]["status"] != "running"
+    values = row | snapshot_columns(snapshot)
+    values.update(worker_id=results["logs"].name)
+
+    values.update(avg_columns(results["avg"], snapshot))
+    if values["max_input_tokens"] != "":
+        results["max_input_tokens"][job_id] = int(values["max_input_tokens"])
+    elapsed = time.time() - results["started_at"]
+    values["avg_tps"] = f"{sum(results['max_input_tokens'].values()) / elapsed:.2f}" if elapsed > 0 else ""
+    if final:
+        results["writer"].writerow(values)
+        results["output"].flush()
+        os.fsync(results["output"].fileno())
+        results["published"].add(job_id)
+    results["pending"][job_id] = {"job_id": job_id, "values": {key: values[key] for key in FIELDS[6:]}}
+
+
+def flush_results(results: dict) -> bool:
+    if not results["pending"]:
+        return True
+    try:
+        rejected = plan_request("update_many", updates=list(results["pending"].values())) or []
+    except Exception:
+        logging.exception("Google Sheets batch update failed; retaining %d updates for retry", len(results["pending"]))
+        return False
+    for item in rejected:
+        logging.warning("Google Sheets job %s rejected: %s; discarding obsolete table update", item["job_id"], item["error"])
+    for job_id, update in results["pending"].items():
+        if update["values"]["status"] != "running":
+            (ROOT / "_state/runtime/jobs" / results["logs"].name / f"{job_id}.json").unlink(missing_ok=True)
+    results["pending"].clear()
+    return True
+
+
+def save_job_control(control: dict) -> None:
+    path = control["path"]
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(control["record"]))
+    temporary.replace(path)
+
+
+def create_job_control(row: dict, worker_id: str) -> dict:
+    path = ROOT / "_state/runtime/jobs" / worker_id / f"{row['job_id']}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    control = {"path": path, "stopped": Event(), "record": {
+        "row": row, "token": uuid4().hex, "heartbeat_at": time.time(), "snapshot": None, "stop_error": None,
+    }}
+    save_job_control(control)
+    return control
+
+
+def request_job_stop(control: dict, error: str) -> None:
+    if not control["record"]["stop_error"]:
+        control["record"]["stop_error"] = error
+    control["stopped"].set()
+
+
+def record_job_progress(control: dict, snapshot: dict) -> None:
+    final = snapshot["job"]["status"] != "running"
+    if control["stopped"].is_set():
+        if not final:
             return
-        final = snapshot["job"]["status"] != "running"
-        values = row | snapshot_columns(snapshot)
-        values.update(worker_id=results["logs"].name, heartbeat_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
+        error = control["record"]["stop_error"]
+        snapshot["job"].update(status="interrupted" if error == "job:interrupted" else "error", error=error)
+    control["record"].update(heartbeat_at=time.time(), snapshot=snapshot)
+    save_job_control(control)
 
-        values.update(avg_columns(results["avg"], snapshot if final else None))
-        if final:
-            results["writer"].writerow(values)
-            results["output"].flush()
-            os.fsync(results["output"].fileno())
-            results["published"].add(job_id)
-        try:
-            plan_request("update", job_id=job_id, values={key: values[key] for key in FIELDS[6:]})
-        except Exception as error:
-            with (results["logs"] / "sync-errors.log").open("a", encoding="utf-8") as output:
-                output.write(f"job {job_id}: {error}\n")
 
-            results["sync_failed"] = results["sync_failed"] or final
+def restore_job_results(worker_id: str) -> None:
+    directory = ROOT / "_state/runtime/jobs"
+    directory.mkdir(parents=True, exist_ok=True)
+    with (directory / "recovery.lock").open("a+") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        for path in directory.glob("*/*.json"):
+            if path.parent.name == worker_id:
+                continue
+            owner = ROOT / "_state/runtime/workers" / f"{path.parent.name}.json"
+            if owner.exists():
+                worker = json.loads(owner.read_text())
+                try:
+                    if psutil.Process(worker["pid"]).create_time() == worker["created"]:
+                        continue
+                except psutil.NoSuchProcess:
+                    pass
+            record = json.loads(path.read_text())
+            snapshot = record["snapshot"]
+            final = snapshot is not None and snapshot["job"]["status"] != "running"
+            if not final and time.time() - record["heartbeat_at"] <= float(os.environ["WORKER_STALE_AFTER"]):
+                continue
+            stop_token_processes(record["token"])
+            error = record.get("stop_error") or "job:heartbeat_timeout"
+            status = "interrupted" if error == "job:interrupted" else "error"
+            values = snapshot_columns(snapshot) if final else {"status": status, "result": "interrupted" if status == "interrupted" else "error", "error": error}
+            try:
+                plan_request("update", job_id=record["row"]["job_id"], values=values | {"worker_id": record["row"]["worker_id"]})
+            except Exception:
+                logging.exception("Could not restore job %s; retaining runtime record", record["row"]["job_id"])
+                continue
+            path.unlink(missing_ok=True)
 
 
 def run_jobs(process: subprocess.Popen, model_port: int, results: dict) -> int:
     parallel = int(os.environ["WORKER_PARALLEL"])
+    interval = float(os.environ["WORKER_HEARTBEAT_INTERVAL"])
+    last_sync, next_claim = time.monotonic(), 0.0
     with ThreadPoolExecutor(max_workers=parallel) as pool:
         futures = set()
-        while True:
-            if process.poll() is not None:
-                raise RuntimeError(f"model backend exited with code {process.returncode}")
-            for future in list(futures):
-                if future.done():
-                    publish_result(results, future.row, future.result())
-                    futures.remove(future)
-            while not results["sync_failed"] and len(futures) < parallel:
-                try:
-
-                    row = plan_request(
-                        "claim", model=os.environ["WORKER_MODEL_ALIAS"] or os.environ["WORKER_MODEL"],
-                        worker_id=results["logs"].name,
-                        exclude_job_ids=list(results["published"] | {future.row["job_id"] for future in futures}),
+        stop_error = "worker:failed"
+        try:
+            while True:
+                sync_due = time.monotonic() - last_sync >= interval
+                if sync_due:
+                    restore_job_results(results["logs"].name)
+                if process.poll() is not None:
+                    stop_error = "backend:exited"
+                    raise RuntimeError(f"model backend exited with code {process.returncode}")
+                finished = False
+                for future in list(futures):
+                    control = future.control
+                    if future.done():
+                        record_job_progress(control, future.result())
+                        publish_result(results, future.row, control["record"]["snapshot"])
+                        futures.remove(future)
+                        finished = True
+                    else:
+                        if time.time() - control["record"]["heartbeat_at"] > float(os.environ["WORKER_STALE_AFTER"]):
+                            if not control["stopped"].is_set():
+                                logging.warning("Job %s heartbeat expired; stopping its processes", future.row["job_id"])
+                            request_job_stop(control, "job:heartbeat_timeout")
+                            stop_token_processes(control["record"]["token"])
+                        if sync_due and control["record"]["snapshot"] is not None:
+                            publish_result(results, future.row, control["record"]["snapshot"])
+                if sync_due or finished:
+                    flush_results(results)
+                    last_sync = time.monotonic()
+                exhausted = False
+                while len(futures) < parallel and time.monotonic() >= next_claim:
+                    try:
+                        row = plan_request(
+                            "claim", model=os.environ["WORKER_MODEL_ALIAS"] or os.environ["WORKER_MODEL"],
+                            worker_id=results["logs"].name,
+                            exclude_job_ids=list(results["published"] | {future.row["job_id"] for future in futures}),
+                        )
+                    except Exception:
+                        logging.exception("Google Sheets claim failed; retrying after heartbeat interval")
+                        next_claim = time.monotonic() + interval
+                        break
+                    if row is None:
+                        next_claim = time.monotonic() + interval
+                        exhausted = True
+                        break
+                    slot = next(slot for slot in range(parallel) if all(future.slot != slot for future in futures))
+                    control = create_job_control(row, results["logs"].name)
+                    future = pool.submit(
+                        run_job, row, results["logs"].name, results["logs"], slot,
+                        model_port + 1, interval, partial(record_job_progress, control), control=control,
                     )
-                except Exception as error:
-                    with (results["logs"] / "sync-errors.log").open("a", encoding="utf-8") as output:
-                        output.write(f"claim: {error}\n")
-                    results["sync_failed"] = True
+                    future.control, future.row, future.slot = control, row, slot
+                    futures.add(future)
+                if not futures and exhausted and not results["pending"]:
                     break
-                if row is None:
-                    break
-
-                slot = next(slot for slot in range(parallel) if all(future.slot != slot for future in futures))
-                future = pool.submit(
-                    run_job, row, results["logs"].name, results["logs"], slot,
-                    model_port + 1,
-                    float(os.environ["WORKER_HEARTBEAT_INTERVAL"]),
-                    partial(publish_result, results, row),
-                )
-                future.row = row
-                future.slot = slot
-                futures.add(future)
-            if not futures:
-                break
-            wait(futures, timeout=1)
-    return int(results["sync_failed"])
+                if futures:
+                    wait(futures, timeout=1)
+                else:
+                    time.sleep(1)
+        except (KeyboardInterrupt, SystemExit) as error:
+            if isinstance(error, KeyboardInterrupt) or error.code in (129, 130, 143):
+                stop_error = "job:interrupted"
+            raise
+        finally:
+            for future in futures:
+                if not future.done():
+                    request_job_stop(future.control, stop_error)
+                stop_token_processes(future.control["record"]["token"])
+            while any(not future.done() for future in futures):
+                for future in futures:
+                    if not future.done():
+                        stop_token_processes(future.control["record"]["token"])
+                time.sleep(0.1)
+            for future in futures:
+                try:
+                    snapshot = future.result()
+                except Exception:
+                    request_job_stop(future.control, stop_error)
+                    save_job_control(future.control)
+                    logging.exception("Job %s failed during worker shutdown", future.row["job_id"])
+                else:
+                    record_job_progress(future.control, snapshot)
+                    publish_result(results, future.row, snapshot)
+    return 0
 
 
 def execute_plan(logs: Path) -> int:
     with reserve_gpu(), reserve_ports(int(os.environ["WORKER_PARALLEL"])) as model_port:
 
-        interrupted = plan_request("mark_stale_jobs_interrupted", stale_after=int(os.environ["WORKER_STALE_AFTER"]))
-        if interrupted:
-            print(f"Marked stale jobs interrupted: {interrupted}")
+        restore_job_results(logs.name)
 
         with (logs / "results.csv").open("a", newline="", encoding="utf-8") as output:
             writer = csv.DictWriter(output, fieldnames=FIELDS, lineterminator="\n")
@@ -289,8 +432,9 @@ def execute_plan(logs: Path) -> int:
 
             results = {
                 "logs": logs, "output": output, "writer": writer,
-                "avg": dict.fromkeys(("tokens", "time", "tools", "tool_time", "jobs"), 0),
-                "published": set(), "sync_failed": False, "lock": Lock(),
+                "avg": dict.fromkeys(("tools", "tool_time", "jobs"), 0),
+                "published": set(), "max_input_tokens": {}, "started_at": psutil.Process().create_time(),
+                "pending": {},
             }
             with start_backend(logs, model_port) as process:
                 return run_jobs(process, model_port, results)
@@ -314,28 +458,7 @@ def stop_processes(record: dict) -> None:
     except psutil.NoSuchProcess:
         pass
 
-    while True:
-        processes = []
-        for process in psutil.process_iter():
-            if process.pid == os.getpid():
-                continue
-            try:
-                if process.environ().get("WORKER_PROCESS_TOKEN") == record["token"]:
-                    processes.append(process)
-                    process.terminate()
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-        if not processes:
-            return
-        _, alive = psutil.wait_procs(processes, timeout=3)
-        for process in alive:
-            try:
-                process.kill()
-            except psutil.NoSuchProcess:
-                pass
-        _, alive = psutil.wait_procs(alive, timeout=3)
-        if alive:
-            raise RuntimeError(f"Worker processes did not stop: {[process.pid for process in alive]}")
+    stop_token_processes(record["token"], "WORKER_PROCESS_TOKEN")
 
 
 def archive_logs() -> None:
